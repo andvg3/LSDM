@@ -15,7 +15,6 @@ import torch as th
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat
 from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
-from data_loaders.humanml.scripts import motion_process
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, scale_betas=1.):
     """
@@ -202,7 +201,7 @@ class GaussianDiffusion:
         # assuming a.shape == b.shape == bs, J, Jdim, seqlen
         # assuming mask.shape == bs, 1, 1, seqlen
         loss = self.l2_loss(a, b)
-        loss = sum_flat(loss * mask.float())  # gives \sigma_euclidean over unmasked elements
+        loss = sum_flat(loss.sum(axis=-1).sum(axis=-1) * mask.float())  # gives \sigma_euclidean over unmasked elements
         n_entries = a.shape[1] * a.shape[2]
         non_zero_elements = sum_flat(mask) * n_entries
         # print('mask', mask.shape)
@@ -275,7 +274,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-        self, model, x, t, clip_denoised=True, denoised_fn=None, model_kwargs=None
+        self, model, x, vertices, mask, t, y, clip_denoised=True, denoised_fn=None, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -302,16 +301,16 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, self._scale_timesteps(t), **model_kwargs)
+        model_output = model(x, vertices, mask, self._scale_timesteps(t), y)
 
-        if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
-            inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
-            assert self.model_mean_type == ModelMeanType.START_X, 'This feature supports only X_start pred for mow!'
-            assert model_output.shape == inpainting_mask.shape == inpainted_motion.shape
-            model_output = (model_output * ~inpainting_mask) + (inpainted_motion * inpainting_mask)
-            # print('model_output', model_output.shape, model_output)
-            # print('inpainting_mask', inpainting_mask.shape, inpainting_mask[0,0,0,:])
-            # print('inpainted_motion', inpainted_motion.shape, inpainted_motion)
+        # if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
+        #     inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
+        #     assert self.model_mean_type == ModelMeanType.START_X, 'This feature supports only X_start pred for mow!'
+        #     assert model_output.shape == inpainting_mask.shape == inpainted_motion.shape
+        #     model_output = (model_output * ~inpainting_mask) + (inpainted_motion * inpainting_mask)
+        # print('model_output', model_output.shape, model_output)
+        # print('inpainting_mask', inpainting_mask.shape, inpainting_mask[0,0,0,:])
+        # print('inpainted_motion', inpainted_motion.shape, inpainted_motion)
 
         if self.model_var_type in [ModelVarType.LEARNED, ModelVarType.LEARNED_RANGE]:
             assert model_output.shape == (B, C * 2, *x.shape[2:])
@@ -497,7 +496,10 @@ class GaussianDiffusion:
         self,
         model,
         x,
+        vertices,
+        mask,
         t,
+        y,
         clip_denoised=True,
         denoised_fn=None,
         cond_fn=None,
@@ -524,7 +526,10 @@ class GaussianDiffusion:
         out = self.p_mean_variance(
             model,
             x,
+            vertices,
+            mask,
             t,
+            y,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
             model_kwargs=model_kwargs,
@@ -599,6 +604,9 @@ class GaussianDiffusion:
         self,
         model,
         shape,
+        vertices,
+        mask,
+        y,
         noise=None,
         clip_denoised=True,
         denoised_fn=None,
@@ -640,6 +648,9 @@ class GaussianDiffusion:
         for i, sample in enumerate(self.p_sample_loop_progressive(
             model,
             shape,
+            vertices,
+            mask,
+            y,
             noise=noise,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
@@ -664,6 +675,9 @@ class GaussianDiffusion:
         self,
         model,
         shape,
+        vertices,
+        mask,
+        y,
         noise=None,
         clip_denoised=True,
         denoised_fn=None,
@@ -719,7 +733,10 @@ class GaussianDiffusion:
                 out = sample_fn(
                     model,
                     img,
+                    vertices,
+                    mask,
                     t,
+                    y,
                     clip_denoised=clip_denoised,
                     denoised_fn=denoised_fn,
                     cond_fn=cond_fn,
@@ -1224,7 +1241,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None, dataset=None):
+    def training_losses(self, model, cf, vertices, mask, t, y=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1240,15 +1257,8 @@ class GaussianDiffusion:
 
         # enc = model.model._modules['module']
         enc = model.model
-        mask = model_kwargs['y']['mask']
-        get_xyz = lambda sample: enc.rot2xyz(sample, mask=None, pose_rep=enc.pose_rep, translation=enc.translation,
-                                             glob=enc.glob,
-                                             # jointstype='vertices',  # 3.4 iter/sec # USED ALSO IN MotionCLIP
-                                             jointstype='smpl',  # 3.4 iter/sec
-                                             vertstrans=False)
+        x_start = cf
 
-        if model_kwargs is None:
-            model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
         x_t = self.q_sample(x_start, t, noise=noise)
@@ -1267,7 +1277,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+            model_output = model(x_t, vertices, mask, self._scale_timesteps(t), y)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,

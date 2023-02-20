@@ -14,7 +14,7 @@ import trimesh
 import pandas as pd
 import scipy
 
-import eulerangles
+import posa.eulerangles
 
 import pdb
 

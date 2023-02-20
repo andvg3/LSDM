@@ -59,7 +59,7 @@ def create_o3d_mesh_from_np(vertices, faces, vertex_colors=[]):
     return mesh
 
 def get_semantics_color_coding():
-    matter_port_label_filename = '../mpcat40_modified.tsv'
+    matter_port_label_filename = 'mpcat40_modified.tsv'
     matter_port_label_filename = osp.expandvars(matter_port_label_filename)
     df = pd.read_csv(matter_port_label_filename, sep='\t')
     color_coding_hex = list(df['hex'])  # list of str

@@ -21,7 +21,7 @@ from torch import nn
 import numpy as np
 import trimesh
 import openmesh as om
-import posa_utils
+import posa.posa_utils as posa_utils
 
 
 def load_model(model_name='POSA', **kwargs):
@@ -286,7 +286,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, z_dim=256, num_hidden_layers=3, channels=64, ds_us_dir='./mesh_ds',
+    def __init__(self, input_feats, z_dim=256, num_hidden_layers=3, channels=64, ds_us_dir='./mesh_ds',
                  normalization_mode='group_norm', num_groups=8, seq_length=9, no_obj_classes=8,
                  use_cuda=True, **kwargs):
         super(Decoder, self).__init__()
@@ -301,6 +301,7 @@ class Decoder(nn.Module):
         self.channels = (channels * np.ones(4)).astype(int).tolist()
 
         self.de_spiral = nn.ModuleList()
+        self.de_spiral.append(GraphLin_block(input_feats + 3, 3 + z_dim, normalization_mode, num_groups))
         self.de_spiral.append(GraphLin_block(3 + z_dim, z_dim // 2, normalization_mode, num_groups))
         self.de_spiral.append(GraphLin_block(z_dim // 2, self.channels[0], normalization_mode, num_groups))
         for _ in range(num_hidden_layers):

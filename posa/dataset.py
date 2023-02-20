@@ -3,7 +3,7 @@ import time
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-import data_utils as du
+import posa.data_utils as du
 from tqdm import tqdm
 
 '''
@@ -11,7 +11,7 @@ Return a segment of a motion sequence in PROXD dataset.
 '''
 class ProxSegDataset(Dataset):
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, train_seg_len=32,
-                 ds_weights_path="./support_files/downsampled_weights.npy", jump_step=1, step_multiplier=1, **kwargs):
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=1, step_multiplier=1, **kwargs):
         self.data_dir = data_dir
         self.semantics_dir = os.path.join(data_dir, "semantics")
         self.vertices_can_dir = os.path.join(data_dir, "vertices_can")
@@ -72,7 +72,7 @@ Support dataset for legacy variant of ContactFormer.
 '''
 class ProxSegDataset_seq(Dataset):
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, train_seg_len=32, num_seg=8,
-                 ds_weights_path="./support_files/downsampled_weights.npy", step_multiplier=1, stride=32,
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", step_multiplier=1, stride=32,
                  jump_step=1, **kwargs):
         self.data_dir = data_dir
         self.contacts_s_dir = os.path.join(data_dir, "semantics")
@@ -147,7 +147,7 @@ Support dataset for legacy variant of ContactFormer.
 '''
 class ProxSegDataset_var(Dataset):    # when jump_step=8, for a whole seq, dataset's max_frame is 165, max num_seg is 29
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, max_frame=128, num_seg=10, dist_eps=0.7,
-                 ds_weights_path="./support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, **kwargs):
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, **kwargs):
         self.data_dir = data_dir
         self.contacts_s_dir = os.path.join(data_dir, "semantics")
         self.vertices_can_dir = os.path.join(data_dir, "vertices_can")
@@ -267,7 +267,7 @@ Used for training/testing final version of ContactFormer.
 '''
 class ProxDataset_ds(Dataset):    # when jump_step=8, for a whole seq, dataset's max_frame is 165, max num_seg is 29
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, max_frame=220,
-                 ds_weights_path="./support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, **kwargs):
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, **kwargs):
         '''
             data_dir: directory that stores processed PROXD dataset.
             fix_orientation: flag that specifies whether we always make the first pose in a motion sequence facing

@@ -6,12 +6,12 @@ import torch
 import torch.nn.functional as F
 import time
 from torch.utils.data import DataLoader
-from contactFormer import ContactFormer
-from posa_utils import count_parameters
-from dataset import ProxDataset_ds
+from posa.contactFormer import ContactFormer
+from posa.posa_utils import count_parameters
+from posa.dataset import ProxDataset_ds
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from general_utils import compute_recon_loss, compute_delta
+from posa.general_utils import compute_recon_loss, compute_delta
 import numpy as np
 """
 Running sample:
@@ -114,14 +114,14 @@ if __name__ == '__main__':
     print(torch.version.cuda)
     # torch.multiprocessing.set_start_method('spawn')
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--train_data_dir", type=str, default="../data/proxd_train",
+    parser.add_argument("--train_data_dir", type=str, default="data/proxd_train",
                         help="path to POSA_temp dataset dir")
-    parser.add_argument("--valid_data_dir", type=str, default="../data/proxd_valid",
+    parser.add_argument("--valid_data_dir", type=str, default="data/proxd_valid",
                         help="path to POSA_temp dataset dir")
     parser.add_argument("--load_ckpt", type=str, default=None,
                         help="load a checkpoint as the continue point for training")
-    parser.add_argument("--posa_path", type=str, default="../training/posa/model_ckpt/best_model_recon_acc.pt")
-    parser.add_argument("--out_dir", type=str, default="../training/", help="Folder that stores checkpoints and training logs")
+    parser.add_argument("--posa_path", type=str, default="training/posa/model_ckpt/best_model_recon_acc.pt")
+    parser.add_argument("--out_dir", type=str, default="training/", help="Folder that stores checkpoints and training logs")
     parser.add_argument("--experiment", type=str, default="default_experiment",
                         help="Experiment name. Checkpoints and training logs will be saved in out_dir/experiment folder.")
     parser.add_argument("--save_interval", type=int, default=50, help="Epoch interval for saving model checkpoints.")

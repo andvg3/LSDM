@@ -55,7 +55,7 @@ if __name__ == '__main__':
     num_obj_classes = 8
     # For fix_ori
     fix_ori = True
-    ds_weights = torch.tensor(np.load("./support_files/downsampled_weights.npy"))
+    ds_weights = torch.tensor(np.load("posa/support_files/downsampled_weights.npy"))
     associated_joints = torch.argmax(ds_weights, dim=1)
     os.makedirs(output_dir, exist_ok=True)
 

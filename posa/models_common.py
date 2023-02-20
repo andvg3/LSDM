@@ -5,7 +5,7 @@ from torch import nn
 import numpy as np
 import trimesh
 import openmesh as om
-import posa_utils
+import posa.posa_utils
 
 
 def get_norm_layer(channels=None, normalization_mode=None, num_groups=None, affine=True):

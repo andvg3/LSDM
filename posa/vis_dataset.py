@@ -22,7 +22,7 @@ if __name__ == '__main__':
                         help="the path to camera settings in open3d")
     parser.add_argument("--scene_dir", type=str, default="/home/yixing/research/human_3d/POSA/POSA_dir/scenes",
                         help="the path to the scene mesh")
-    parser.add_argument("--tpose_mesh_dir", type=str, default="../data/mesh_ds",
+    parser.add_argument("--tpose_mesh_dir", type=str, default="data/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
     parser.add_argument("--seq_name", type=str, default="N0Sofa_00034_01")
     parser.add_argument("--single_frame", type=int, default=-1)

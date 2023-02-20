@@ -3,14 +3,14 @@ import math
 import numpy as np
 import argparse
 import torch
-from contactFormer import ContactFormer
-import vis_utils
+from posa.contactFormer import ContactFormer
+import posa.vis_utils as vis_utils
 import trimesh
 import open3d as o3d
 from random import randrange
 from tqdm import tqdm
-import general_utils
-import data_utils as du
+import posa.general_utils as general_utils
+import posa.data_utils as du
 import sklearn.cluster
 
 """
@@ -29,18 +29,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("data_dir", type=str,
                         help="path to POSA_temp dataset dir")
-    parser.add_argument("--load_model", type=str, default="../training/contactformer/model_ckpt/best_model_recon_acc.pt",
+    parser.add_argument("--load_model", type=str, default="training/contactformer/model_ckpt/best_model_recon_acc.pt",
                         help="checkpoint path to load")
-    parser.add_argument("--posa_path", type=str, default="../training/posa/model_ckpt/epoch_0349.pt")
+    parser.add_argument("--posa_path", type=str, default="training/posa/model_ckpt/epoch_0349.pt")
     parser.add_argument("--visualize", dest="visualize", action='store_const', const=True, default=False)
-    parser.add_argument("--scene_dir", type=str, default="../data/scenes",
+    parser.add_argument("--scene_dir", type=str, default="data/scenes",
                         help="the path to the scene mesh")
-    parser.add_argument("--tpose_mesh_dir", type=str, default="../mesh_ds",
+    parser.add_argument("--tpose_mesh_dir", type=str, default="data/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
     parser.add_argument("--save_video", dest='save_video', action='store_const', const=True, default=False)
     parser.add_argument("--output_dir", type=str, default="../test_output",
                         help="the path to save test results")
-    parser.add_argument("--cam_setting_path", type=str, default="./support_files/ScreenCamera_0.json",
+    parser.add_argument("--cam_setting_path", type=str, default="posa/support_files/ScreenCamera_0.json",
                         help="the path to camera settings in open3d")
     parser.add_argument("--single_seq_name", type=str, default="BasementSittingBooth_00142_01")
     parser.add_argument("--test_on_train_set", dest='do_train', action='store_const', const=True, default=False)
@@ -97,7 +97,7 @@ if __name__ == '__main__':
     device = torch.device("cuda")
     num_obj_classes = 8
     # For fix_ori
-    ds_weights = torch.tensor(np.load("./support_files/downsampled_weights.npy"))
+    ds_weights = torch.tensor(np.load("posa/support_files/downsampled_weights.npy"))
     associated_joints = torch.argmax(ds_weights, dim=1)
 
 

@@ -33,7 +33,7 @@ if __name__ == '__main__':
                         help="the number of frames of each input sequence to POSA_temp")
     parser.add_argument("--scene_dir", type=str, default="/home/yixing/research/human_3d/POSA/POSA_dir/scenes",
                         help="the path to the scene mesh")
-    parser.add_argument("--tpose_mesh_dir", type=str, default="../data/mesh_ds",
+    parser.add_argument("--tpose_mesh_dir", type=str, default="data/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
     parser.add_argument("--save_video", dest='save_video', action='store_const', const=True, default=False)
     parser.add_argument("--save_video_dir", type=str, default="../new_output/posa_video/",

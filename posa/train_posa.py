@@ -6,12 +6,12 @@ import torch
 import torch.nn.functional as F
 import time
 from torch.utils.data import DataLoader
-from dataset import ProxSegDataset, ProxDataset_ds
+from posa.dataset import ProxSegDataset, ProxDataset_ds
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from posa_utils import count_parameters
-from posa_models import POSA
-from general_utils import compute_recon_loss_posa, compute_recon_loss
+from posa.posa_utils import count_parameters
+from posa.posa_models import POSA
+from posa.general_utils import compute_recon_loss_posa, compute_recon_loss
 import numpy as np
 
 """
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--seg_len", type=int, default=1)
-    parser.add_argument("--mesh_ds_dir", type=str, default="../data/mesh_ds",
+    parser.add_argument("--mesh_ds_dir", type=str, default="data/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--step_multiplier", type=int, default=1)

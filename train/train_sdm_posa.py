@@ -47,7 +47,6 @@ def train():
     torch.autograd.set_detect_anomaly(True)
     total_recon_loss_semantics = 0
     total_semantics_recon_acc = 0
-    total_KLD_loss = 0
     total_train_loss = 0
 
     n_steps = 0
@@ -70,50 +69,37 @@ def train():
             verts_can,
             mask,
             t,  # [bs](int) sampled timesteps
-            y=["Hello" for _ in range(verts_can.shape[0])],
+            y=["" for _ in range(verts_can.shape[0])],
         )
         losses = compute_losses()
         loss = (losses["loss"] * weights).mean()
+        total_train_loss += loss
 
         # Backward loss
         mp_trainer.backward(loss)
         mp_trainer.optimize(optimizer)
+        
+        # Schedule learning rate
+        n_steps += 1
 
-        # optimizer.zero_grad()
-
+        # Logging the training epoch
         # pr_cf: (bs, seg_len, 655, 8), mu: (bs, 256), logvar: (bs, 256)
-    #     pr_cf, mu, logvar = model(x_t, gt_cf, verts_can, mask, ts, y)
+    #     pr_cf = sample
     #     recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
-
-    #     expanded_mask = mask.unsqueeze(-1).expand(-1, -1, mu.shape[-1])
-    #     mu *= expanded_mask
-    #     logvar *= expanded_mask
-    #     KLD = kl_w * (-0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())) / expanded_mask.sum()
-
-    #     loss = KLD + recon_loss_semantics
-
-    #     loss.backward()
-    #     optimizer.step()
 
     #     total_recon_loss_semantics += recon_loss_semantics.item()
     #     total_semantics_recon_acc += semantics_recon_acc.item()
     #     total_train_loss += loss.item()
-    #     total_KLD_loss += KLD.item()
-    #     n_steps += 1
 
     # total_recon_loss_semantics /= n_steps
-    # total_train_loss /= n_steps
+    total_train_loss /= n_steps
     # total_semantics_recon_acc /= n_steps
-    # total_KLD_loss /= n_steps
 
     # writer.add_scalar('recon_loss_semantics/train', total_recon_loss_semantics, e)
     # writer.add_scalar('total_semantics_recon_acc/train', total_semantics_recon_acc, e)
-    # writer.add_scalar('total/train_total_loss', total_train_loss, e)
-    # writer.add_scalar('KLD/train_KLD', total_KLD_loss, e)
+    writer.add_scalar('total/train_total_loss', total_train_loss, e)
 
-    # print(
-    #     '====> Total_train_loss: {:.4f}, KLD = {:.4f}, Recon_loss_semantics = {:.4f} , Semantics_recon_acc = {:.4f}'.format(
-    #         total_train_loss, total_KLD_loss, total_recon_loss_semantics, total_semantics_recon_acc))
+    print('====> Total_train_loss: {:.4f}'.format(total_train_loss))
     return total_train_loss
 
 
@@ -141,7 +127,7 @@ def validate():
                 gt_cf.shape,
                 verts_can,
                 mask,
-                y=["Hello"],
+                y=[""],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
@@ -158,9 +144,6 @@ def validate():
             # posa_out = model.posa(z, verts_can)
             pr_cf = sample
             recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
-            print(sample, gt_cf)
-            print("Accuracy: ", recon_loss_semantics, semantics_recon_acc)
-            raise
 
             total_recon_loss_semantics += recon_loss_semantics.item()
             total_semantics_recon_acc += semantics_recon_acc.item()
@@ -209,6 +192,7 @@ if __name__ == '__main__':
     parser.add_argument("--num_workers", type=int, default=0, help="number of workers for dataloader")
     parser.add_argument("--jump_step", type=int, default=8, help="frame skip size for each input motion sequence")
     parser.add_argument("--max_frame", type=int, default=256, help="The maximum length of motion sequence (after frame skipping) which model accepts.")
+    parser.add_argument("--eval_epochs", type=int, default=10, help="The number of epochs that we periodically evalute the model.")
 
     args = parser.parse_args()
     args_dict = vars(args)
@@ -233,6 +217,7 @@ if __name__ == '__main__':
     dim_ff = args_dict['dim_ff']
     f_vert = args_dict['f_vert']
     posa_path = args_dict['posa_path']
+    eval_epochs = args_dict['eval_epochs']
 
     save_ckpt_dir = os.path.join(out_dir, experiment, "model_ckpt")
     log_dir = os.path.join(out_dir, experiment, "tb_log")
@@ -248,9 +233,7 @@ if __name__ == '__main__':
                                    step_multiplier=1, jump_step=jump_step)
     valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=num_workers)
 
-    # model = ContactFormer(seg_len=max_frame, encoder_mode=encoder_mode, decoder_mode=decoder_mode,
-    #                       n_layer=n_layer, n_head=n_head, f_vert=f_vert, dim_ff=dim_ff, d_hid=512,
-    #                       posa_path=posa_path).to(device)
+    # Create model and diffusion object
     model, diffusion = create_model_and_diffusion()
     print(
         f"Training using model----encoder_mode: {encoder_mode}, decoder_mode: {decoder_mode}, max_frame: {max_frame}, "
@@ -283,14 +266,12 @@ if __name__ == '__main__':
         training_time = time.time() - start
         print('training_time = {:.4f}'.format(training_time))
 
-        start = time.time()
-        total_valid_loss, total_semantics_recon_acc = validate()
-        validation_time = time.time() - start
-        print('validation_time = {:.4f}'.format(validation_time))
+        if e % save_interval == save_interval-1:
+            start = time.time()
+            total_valid_loss, total_semantics_recon_acc = validate()
+            validation_time = time.time() - start
+            print('validation_time = {:.4f}'.format(validation_time))
 
-        # scheduler.step(total_train_loss)
-
-        if e % save_interval == save_interval - 1:
             data = {
                 'epoch': e,
                 'model_state_dict': model.state_dict(),
@@ -300,25 +281,25 @@ if __name__ == '__main__':
             }
             torch.save(data, osp.join(save_ckpt_dir, 'epoch_{:04d}.pt'.format(e)))
 
-        if total_valid_loss < best_valid_loss:
-            print("Updated best model due to new lowest valid_loss. Current epoch: {}".format(e))
-            best_valid_loss = total_valid_loss
-            data = {
-                'epoch': e,
-                'model_state_dict': model.state_dict(),
-                'total_train_loss': total_train_loss,
-                'total_valid_loss': total_valid_loss,
-            }
-            torch.save(data, osp.join(save_ckpt_dir, 'best_model_valid_loss.pt'))
+            if total_valid_loss < best_valid_loss:
+                print("Updated best model due to new lowest valid_loss. Current epoch: {}".format(e))
+                best_valid_loss = total_valid_loss
+                data = {
+                    'epoch': e,
+                    'model_state_dict': model.state_dict(),
+                    'total_train_loss': total_train_loss,
+                    'total_valid_loss': total_valid_loss,
+                }
+                torch.save(data, osp.join(save_ckpt_dir, 'best_model_valid_loss.pt'))
 
-        if total_semantics_recon_acc > best_recon_acc:
-            print("Updated best model due to new highest semantics_recon_acc. Current epoch: {}".format(e))
-            best_recon_acc = total_semantics_recon_acc
-            data = {
-                'epoch': e,
-                'model_state_dict': model.state_dict(),
-                'total_train_loss': total_train_loss,
-                'total_valid_loss': total_valid_loss,
-                'total_semantics_recon_acc': total_semantics_recon_acc
-            }
-            torch.save(data, osp.join(save_ckpt_dir, 'best_model_recon_acc.pt'))
+            if total_semantics_recon_acc > best_recon_acc:
+                print("Updated best model due to new highest semantics_recon_acc. Current epoch: {}".format(e))
+                best_recon_acc = total_semantics_recon_acc
+                data = {
+                    'epoch': e,
+                    'model_state_dict': model.state_dict(),
+                    'total_train_loss': total_train_loss,
+                    'total_valid_loss': total_valid_loss,
+                    'total_semantics_recon_acc': total_semantics_recon_acc
+                }
+                torch.save(data, osp.join(save_ckpt_dir, 'best_model_recon_acc.pt'))

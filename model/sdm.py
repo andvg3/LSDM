@@ -35,7 +35,7 @@ class SceneDiffusionModel(nn.Module):
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.sequence_pos_encoder, device=self.device)
 
         # Setup POSA embedding for human motions
-        self.posa = POSA_Decoder(input_feats=self.input_feats, ds_us_dir=mesh_ds_dir, use_semantics=True, channels=f_vert).to(self.device)
+        self.posa = POSA_Decoder(input_feats=obj_cat, ds_us_dir=mesh_ds_dir, use_semantics=True, channels=f_vert).to(self.device)
         self.linear_extraction = nn.Sequential(
             nn.Flatten(start_dim=-2),
             nn.Linear(self.input_feats, self.extract_dim),
@@ -78,9 +78,7 @@ class SceneDiffusionModel(nn.Module):
 
         # Embed human motions
         vertices = vertices.squeeze()
-        _x = x.squeeze(0).clone().detach()
-        _x = _x.view(_x.shape[0], _x.shape[1] * _x.shape[2])
-        posa_out = self.posa(_x, vertices)
+        posa_out = self.posa(vertices)
         out = posa_out.unsqueeze(0)
         out = self.linear_extraction(out)
 

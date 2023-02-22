@@ -175,7 +175,7 @@ if __name__ == '__main__':
     parser.add_argument("--out_dir", type=str, default="training/", help="Folder that stores checkpoints and training logs")
     parser.add_argument("--experiment", type=str, default="default_experiment",
                         help="Experiment name. Checkpoints and training logs will be saved in out_dir/experiment folder.")
-    parser.add_argument("--save_interval", type=int, default=1, help="Epoch interval for saving model checkpoints.")
+    parser.add_argument("--save_interval", type=int, default=50, help="Epoch interval for saving model checkpoints.")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument('--fix_ori', dest='fix_ori', action='store_const', const=True, default=False,

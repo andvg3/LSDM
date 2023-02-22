@@ -4,7 +4,7 @@ from diffusion import gaussian_diffusion as gd
 from diffusion.respace import SpacedDiffusion, space_timesteps
 
 from util.fixseed import fixseed
-from train.train_platforms import ClearmlPlatform, TensorboardPlatform, NoPlatform  # required for the eval operation
+from run.train_platforms import ClearmlPlatform, TensorboardPlatform, NoPlatform  # required for the eval operation
 
 
 def load_model_wo_clip(model, state_dict):

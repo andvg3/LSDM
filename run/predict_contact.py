@@ -2,9 +2,11 @@ import os
 import numpy as np
 import argparse
 import torch
-from contactFormer import ContactFormer
 from tqdm import tqdm
-import data_utils as du
+
+import posa.data_utils as du
+
+from util.model_util import create_model_and_diffusion
 
 # Example usage
 # python predict_contact.py ../data/amass --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir ../results/amass
@@ -64,15 +66,18 @@ if __name__ == '__main__':
     seq_name_list = [file_name.split('_verts_can')[0] for file_name in vertices_file_list]
     list_set = set(seq_name_list)
     seq_name_list = list(list_set)
+    use_ddim = False  # FIXME - hardcoded
+    clip_denoised = False  # FIXME - hardcoded
 
     # Load in model checkpoints and set up data stream
-    model = ContactFormer(seg_len=max_frame, encoder_mode=encoder_mode, decoder_mode=decoder_mode,
-                          n_layer=n_layer, n_head=n_head, f_vert=f_vert, dim_ff=dim_ff, d_hid=512,
-                          posa_path=posa_path).to(device)
+    model, diffusion = create_model_and_diffusion()
     model.eval()
     checkpoint = torch.load(ckpt_path)
     model.load_state_dict(checkpoint['model_state_dict'])
 
+    sample_fn = (
+        diffusion.p_sample_loop if not use_ddim else diffusion.ddim_sample_loop
+    )
     for seq_name in seq_name_list:
         print("Test scene: {}".format(seq_name))
 
@@ -89,15 +94,27 @@ if __name__ == '__main__':
         mask[0, :verts_can_batch.shape[0]] = 1
         verts_can_padding = torch.zeros(max_frame - verts_can_batch.shape[0], *verts_can_batch.shape[1:], device=device)
         verts_can_batch = torch.cat((verts_can_batch, verts_can_padding), dim=0)
-
-        z = torch.tensor(np.random.normal(0, 1, (max_frame, 256)).astype(np.float32)).to(device)
+        verts_can_batch = verts_can_batch.unsqueeze(0)
+        cf_shape = [verts_can_batch.shape[0], verts_can_batch.shape[1], verts_can_batch.shape[2], num_obj_classes]
 
         with torch.no_grad():
-            posa_out = model.posa.decoder(z, verts_can_batch)
-            if decoder_mode == 0:
-                pr_cf = posa_out.unsqueeze(0)
-            else:
-                pr_cf = model.decoder(posa_out, mask)
+            sample = sample_fn(
+                model,
+                cf_shape,
+                verts_can_batch,
+                mask=torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                y=["" for _ in range(verts_can_batch.shape[0])],
+                clip_denoised=clip_denoised,
+                model_kwargs=None,
+                skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
+                init_image=None,
+                progress=False,
+                dump_steps=None,
+                noise=None,
+                const_noise=False,
+                # when experimenting guidance_scale we want to nutrileze the effect of noise on generation
+            )
+            pr_cf = sample
 
         pred = pr_cf.squeeze()
         pred = pred[:(int)(mask.sum())]

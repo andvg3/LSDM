@@ -127,7 +127,7 @@ def validate():
                 gt_cf.shape,
                 verts_can,
                 mask,
-                y=[""],
+                y=["" for _ in range(verts_can.shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
@@ -228,10 +228,10 @@ if __name__ == '__main__':
 
     train_dataset = ProxDataset_ds(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    train_data_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=num_workers)
+    train_data_loader = DataLoader(train_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
     valid_dataset = ProxDataset_ds(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=num_workers)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
 
     # Create model and diffusion object
     model, diffusion = create_model_and_diffusion()
@@ -242,7 +242,7 @@ if __name__ == '__main__':
     print("Total trainable parameters: {}".format(count_parameters(model)))
     # optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5, threshold=0.0001, patience=10, verbose=True)
-    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1000, gamma=0.1, verbose=True)
+    # scheduler = torch.optim.lr_scheduler.StepLR(opt, 1000, gamma=0.1, verbose=True)
     # milestones = [200, 400, 600, 800]
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma=0.5, verbose=True)
 

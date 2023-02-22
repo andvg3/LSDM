@@ -65,22 +65,21 @@ class SceneDiffusionModel(nn.Module):
 
         # Embed features from time
         emb_ts = self.embed_timestep(timesteps)
+        emb_ts = emb_ts.permute(1, 0, 2)
 
         # Embed features from modality
         if self.modality == 'text':
             enc_text = self._encode_text(y)
             emb_mod = self.embed_text(self._mask_cond(enc_text, force_mask=force_mask))
-            emb_mod = emb_mod.unsqueeze(0)
+            emb_mod = emb_mod.unsqueeze(0).permute(1, 0, 2)
         
         # Combine features from timestep and modality
         emb = torch.cat((emb_ts, emb_mod), dim=-1)
         emb = emb.repeat(1, seq_len, 1)
 
         # Embed human motions
-        vertices = vertices.squeeze()
         posa_out = self.posa(vertices)
-        out = posa_out.unsqueeze(0)
-        out = self.linear_extraction(out)
+        out = self.linear_extraction(posa_out)
 
         # Final embedding features
         emb = torch.cat((out, emb), dim=-1)

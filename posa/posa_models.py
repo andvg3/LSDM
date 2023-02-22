@@ -92,6 +92,10 @@ class SpiralConv(nn.Module):
             bs = x.size(0)
             x = torch.index_select(x, self.dim, self.indices.view(-1))  # (64, 655 * 9, 46)
             x = x.view(bs, n_nodes, -1) # (64, 655, 9 * 46)
+        elif x.dim() == 4:
+            bs, seq_len = x.size(0), x.size(1)
+            x = torch.index_select(x, self.dim+1, self.indices.view(-1))  # (64, 655 * 9, 46)
+            x = x.view(bs, seq_len, n_nodes, -1) # (64, 655, 9 * 46)
         else:
             raise RuntimeError(
                 'x.dim() is expected to be 2 or 3, but received {}'.format(
@@ -148,7 +152,7 @@ class GraphLin_block(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         if self.normalization_mode is not None:
-            x = self.norm(x.permute(0, 2, 1)).permute(0, 2, 1)
+            x = self.norm(x.permute(0, 3, 2, 1)).permute(0, 3, 2, 1)
         if self.non_lin:
             x = self.relu(x)
         if self.drop_out:
@@ -177,7 +181,7 @@ class Spiral_block(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         if self.normalization_mode is not None:
-            x = self.norm(x.permute(0, 2, 1)).permute(0, 2, 1)
+            x = self.norm(x.permute(0, 3, 2, 1)).permute(0, 3, 2, 1)
         if self.non_lin:
             x = self.relu(x)
         return x

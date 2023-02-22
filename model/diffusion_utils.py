@@ -108,5 +108,5 @@ class OutputProcess(nn.Module):
             output = torch.cat((first_pose, vel), axis=0)  # [seqlen, bs, 150]
         else:
             raise ValueError
-        output = output.reshape(nframes, self.seq_len, self.vert_dims, self.obj_cat)
+        output = output.reshape(nframes, -1, self.vert_dims, self.obj_cat)
         return output

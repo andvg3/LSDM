@@ -2,25 +2,26 @@ import os
 import numpy as np
 import argparse
 import torch
-import vis_utils
 import trimesh
 import open3d as o3d
 from tqdm import tqdm
-import eulerangles
+
+import posa.vis_utils as vis_utils
+import posa.eulerangles as eulerangles
 """
 python vis_dataset.py --save_video --cam_setting_path support_files/ScreenCamera_7.json --seq_name MPH11_00151_01
 """
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--data_dir", type=str, default="../data/new_posa_temp_train",
+    parser.add_argument("--data_dir", type=str, default="data/proxd_train",
                         help="path to POSA_temp dataset dir")
     parser.add_argument("--save_video", dest='save_video', action='store_const', const=True, default=False)
     parser.add_argument("--save_video_dir", type=str, default="../new_output/gt_dataset_video/",
                         help="the path to save results from temp posa")
     parser.add_argument("--cam_setting_path", type=str, default="./support_files/ScreenCamera_0.json",
                         help="the path to camera settings in open3d")
-    parser.add_argument("--scene_dir", type=str, default="/home/yixing/research/human_3d/POSA/POSA_dir/scenes",
+    parser.add_argument("--scene_dir", type=str, default="data/scenes",
                         help="the path to the scene mesh")
     parser.add_argument("--tpose_mesh_dir", type=str, default="data/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
@@ -61,7 +62,7 @@ if __name__ == '__main__':
     tpose_mesh_path = os.path.join(tpose_mesh_dir, "mesh_{}.obj".format(down_sample_level))
     faces_arr = trimesh.load(tpose_mesh_path, process=False).faces
 
-    for frame in tqdm(range(verts.shape[0])):
+    for frame in tqdm(range(0, verts.shape[0], 5)):
         if single_frame != -1:
             if frame != single_frame:
                 continue
@@ -96,7 +97,7 @@ if __name__ == '__main__':
 
             ctr = visualizer.get_view_control()
             parameters = o3d.io.read_pinhole_camera_parameters(cam_path)
-            ctr.convert_from_pinhole_camera_parameters(parameters)
+            # ctr.convert_from_pinhole_camera_parameters(parameters)
             visualizer.poll_events()
             visualizer.update_renderer()
             output_image_dir = os.path.join(save_video_dir, seq_name + "_semantics")

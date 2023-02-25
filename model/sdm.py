@@ -44,7 +44,7 @@ class SceneDiffusionModel(nn.Module):
 
         # Setup combination layers for extracted information
         self.combine_extraction = nn.Sequential(
-            nn.Linear(self.extract_dim * 2, self.extract_dim),
+            nn.Linear(self.extract_dim + self.latent_dim * 2, self.extract_dim),
             nn.GELU(),
         ).to(self.device)
 

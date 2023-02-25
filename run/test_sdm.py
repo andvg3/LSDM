@@ -60,6 +60,7 @@ if __name__ == '__main__':
     parser.add_argument("--dim_ff", type=int, default=512)
     parser.add_argument("--f_vert", type=int, default=64)
     parser.add_argument("--max_frame", type=int, default=256)
+    parser.add_argument("--seed", type=int, default=1)
 
     # Parse arguments and assign directories
     args = parser.parse_args()
@@ -88,6 +89,7 @@ if __name__ == '__main__':
     dim_ff = args_dict['dim_ff']
     f_vert = args_dict['f_vert']
     posa_path = args_dict['posa_path']
+    seed = args_dict['seed']
 
     # Argument logic check
     if visualize and save_video:
@@ -101,6 +103,7 @@ if __name__ == '__main__':
     # For fix_ori
     ds_weights = torch.tensor(np.load("posa/support_files/downsampled_weights.npy"))
     associated_joints = torch.argmax(ds_weights, dim=1)
+    torch.manual_seed(seed)
 
 
     seq_name_list = []

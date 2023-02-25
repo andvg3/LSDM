@@ -305,8 +305,8 @@ class Decoder(nn.Module):
         self.channels = (channels * np.ones(4)).astype(int).tolist()
 
         self.de_spiral = nn.ModuleList()
-        self.de_spiral.append(GraphLin_block(3, 3 + z_dim, normalization_mode, num_groups))
-        self.de_spiral.append(GraphLin_block(3 + z_dim, z_dim // 2, normalization_mode, num_groups))
+        # self.de_spiral.append(GraphLin_block(3, 3 + z_dim, normalization_mode, num_groups))
+        self.de_spiral.append(GraphLin_block(3, z_dim // 2, normalization_mode, num_groups))
         self.de_spiral.append(GraphLin_block(z_dim // 2, self.channels[0], normalization_mode, num_groups))
         for _ in range(num_hidden_layers):
             self.de_spiral.append(

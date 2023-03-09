@@ -290,7 +290,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_feats, z_dim=256, num_hidden_layers=3, channels=64, ds_us_dir='./mesh_ds',
+    def __init__(self, input_feats, z_dim=256, num_hidden_layers=1, channels=64, ds_us_dir='./mesh_ds',
                  normalization_mode='group_norm', num_groups=8, seq_length=9, no_obj_classes=8,
                  use_cuda=True, **kwargs):
         super(Decoder, self).__init__()

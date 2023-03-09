@@ -274,7 +274,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-        self, model, x, vertices, mask, t, y, clip_denoised=True, denoised_fn=None, model_kwargs=None
+        self, model, x, vertices, mask, t, given_objs, given_cats, y, clip_denoised=True, denoised_fn=None, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -301,7 +301,7 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, vertices, mask, self._scale_timesteps(t), y)
+        model_output = model(x, vertices, mask, self._scale_timesteps(t), given_objs, given_cats, y)
 
         # if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
         #     inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
@@ -499,6 +499,8 @@ class GaussianDiffusion:
         vertices,
         mask,
         t,
+        given_objs, 
+        given_cats,
         y,
         clip_denoised=True,
         denoised_fn=None,
@@ -529,6 +531,8 @@ class GaussianDiffusion:
             vertices,
             mask,
             t,
+            given_objs, 
+            given_cats,
             y,
             clip_denoised=clip_denoised,
             denoised_fn=denoised_fn,
@@ -606,6 +610,8 @@ class GaussianDiffusion:
         shape,
         vertices,
         mask,
+        given_objs, 
+        given_cats,
         y,
         noise=None,
         clip_denoised=True,
@@ -650,6 +656,8 @@ class GaussianDiffusion:
             shape,
             vertices,
             mask,
+            given_objs, 
+            given_cats,
             y,
             noise=noise,
             clip_denoised=clip_denoised,
@@ -677,6 +685,8 @@ class GaussianDiffusion:
         shape,
         vertices,
         mask,
+        given_objs, 
+        given_cats,
         y,
         noise=None,
         clip_denoised=True,
@@ -736,6 +746,8 @@ class GaussianDiffusion:
                     vertices,
                     mask,
                     t,
+                    given_objs, 
+                    given_cats,
                     y,
                     clip_denoised=clip_denoised,
                     denoised_fn=denoised_fn,
@@ -1241,7 +1253,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, cf, vertices, mask, t, y=None, noise=None):
+    def training_losses(self, model, cf, vertices, mask, t, given_objs, given_cats, y=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1251,6 +1263,8 @@ class GaussianDiffusion:
         :param model_kwargs: if not None, a dict of extra keyword arguments to
             pass to the model. This can be used for conditioning.
         :param noise: if specified, the specific Gaussian noise to try to remove.
+        :param given_objs: a batch of given objects as 3D point clouds
+        :param given_cats: a batch of corresponding categorical objects
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
@@ -1277,7 +1291,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x_t, vertices, mask, self._scale_timesteps(t), y)
+            model_output = model(x_t, vertices, mask, self._scale_timesteps(t), given_objs, given_cats, y)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,
@@ -1309,7 +1323,7 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
-            terms["mse"] = mean_flat(((target - model_output) ** 2).mean(-1).mean(-1) * mask)
+            terms["mse"] = mean_flat(((target - model_output) ** 2))
             if "vb" in terms:
                 terms["loss"] = terms["mse"] + terms["vb"]
             else:

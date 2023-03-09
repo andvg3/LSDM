@@ -5,6 +5,7 @@ import argparse
 import torch
 import trimesh
 import open3d as o3d
+from pytorch3d.loss import chamfer_distance
 from random import randrange
 from tqdm import tqdm
 import sklearn.cluster
@@ -25,6 +26,59 @@ def list_mean(list):
     for item in list:
         acc += item
     return acc / len(list)
+
+def _setup_static_objs(objs_dir, cases_dir):
+        _cat = {
+            "chair": 0,
+            "table": 1,
+            "cabinet": 2,
+            "sofa": 3,
+            "bed": 4,
+            "chest_of_drawers": 5,
+            "chest": 5,
+            "stool": 6,
+            "tv_monitor": 7,
+            "tv": 7,
+            "lighting": 8,
+            "shelving": 9,
+            "seating": 10,
+            "furniture": 11,
+        }
+        scenes = os.listdir(objs_dir)
+        max_objs = 8
+        objs = dict()
+        cats = dict()
+        handle = 2
+        pnt_size = 1024
+        for scene in scenes:
+            objs[scene] = dict()
+            cats[scene] = [-1 for _ in range(max_objs)]
+            case_path = os.path.join(cases_dir, scene)
+            case_fn = os.path.join(case_path, 'case_{}.txt'.format(handle))
+
+            with open(case_fn, 'r') as f:
+                given_objs, target_obj = f.readlines()
+                given_objs = given_objs.strip('\n').split(' ')
+            
+            # Read given objects
+            given_objs_tensor = torch.zeros(max_objs, pnt_size, 3)
+            for idx, given_obj in enumerate(given_objs):
+                given_cat = given_obj.split('_')[0]
+                cats[scene][idx] = _cat[given_cat]
+                given_obj_fn = os.path.join(objs_dir, scene, given_obj + '.npy')
+                with open(given_obj_fn, 'rb') as f:
+                    given_obj_verts = torch.from_numpy(np.load(f))
+                    given_objs_tensor[idx] = given_obj_verts
+
+            # Read target object
+            target_cat = target_obj.split('_')[0]
+            target_obj_fn = os.path.join(objs_dir, scene, target_obj + '.npy')
+            with open(target_obj_fn, 'rb') as f:
+                target_obj_verts = torch.from_numpy(np.load(f))
+        
+            objs[scene] = (given_objs_tensor, target_obj_verts)
+            cats[scene] = torch.tensor(cats[scene]), torch.tensor([_cat[target_cat]])
+        return objs, cats
 
 
 if __name__ == '__main__':
@@ -107,15 +161,17 @@ if __name__ == '__main__':
 
 
     seq_name_list = []
-    iou_s_list = []
-    f1_s_list = []
-    recon_semantics_acc_list = []
-    inconsistency_list = []
+    chamfer_list = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
 
     vertices_dir = os.path.join(data_dir, "vertices")
     contacts_s_dir = os.path.join(data_dir, "semantics")
     vertices_can_dir = os.path.join(data_dir, "vertices_can")
+    pre_data_dir = data_dir.split('/')[0]
+    objs_dir = os.path.join(pre_data_dir, "objs")
+    cases_dir = os.path.join(pre_data_dir, "cases")
+    objs, cats = _setup_static_objs(objs_dir, cases_dir)
+
     if do_valid or do_train:
         vertices_file_list = os.listdir(vertices_dir)
         seq_name_list = [file_name.split('_verts')[0] for file_name in vertices_file_list]
@@ -128,7 +184,6 @@ if __name__ == '__main__':
     checkpoint = torch.load(ckpt_path)
     model.load_state_dict(checkpoint['model_state_dict'])
 
-
     for seq_name in seq_name_list:
         if save_video or visualize:
             save_seq_dir = os.path.join(output_dir, seq_name)
@@ -139,6 +194,13 @@ if __name__ == '__main__':
             os.makedirs(output_image_dir, exist_ok=True)
         print("Test scene: {}".format(seq_name))
 
+        scene = seq_name.split('_')[0]
+        given_objs, target_obj = objs[scene]
+        given_cats, target_cat = cats[scene]
+        given_objs =  given_objs.unsqueeze(0).to(device)
+        target_obj = target_obj.unsqueeze(0).to(device)
+        given_cats = given_cats.unsqueeze(0).to(device)
+        target_cat = target_cat.unsqueeze(0).to(device)
         verts = torch.tensor(np.load(os.path.join(vertices_dir, seq_name + "_verts.npy"))).to(device)
         verts_can = torch.tensor(np.load(os.path.join(vertices_can_dir, seq_name + "_verts_can.npy"))).to(device)
         contacts_s = torch.tensor(np.load(os.path.join(contacts_s_dir, seq_name + "_cfs.npy"))).to(device)
@@ -158,10 +220,7 @@ if __name__ == '__main__':
 
         # Loop over video frames to get predictions
         # Metrics for semantic labels
-        iou_s = 0
-        f1_s = 0
-        recon_semantics_acc = 0
-        inconsistency = 0
+        chamfer_s = 0
         class_acc_list = [[] for _ in range(num_obj_classes)]
         class_acc = dict()
         use_ddim = False  # FIXME - hardcoded
@@ -181,14 +240,16 @@ if __name__ == '__main__':
         verts_can_padding = torch.zeros(max_frame - verts_can_batch.shape[0], *verts_can_batch.shape[1:], device=device)
         verts_can_batch = torch.cat((verts_can_batch, verts_can_padding), dim=0)
         verts_can_batch = verts_can_batch.unsqueeze(0)
-        cf_shape = [verts_can_batch.shape[0], verts_can_batch.shape[1], verts_can_batch.shape[2], num_obj_classes]
+        target_obj_shape = list(target_obj.shape)
 
         with torch.no_grad():
             sample = sample_fn(
                 model,
-                cf_shape,
+                target_obj_shape,
                 verts_can_batch,
-                mask=torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                given_objs,
+                given_cats,
                 y=["" for _ in range(verts_can_batch.shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
@@ -201,102 +262,13 @@ if __name__ == '__main__':
                 # when experimenting guidance_scale we want to nutrileze the effect of noise on generation
             )
 
-        pred = sample.squeeze()
-        for i in tqdm(range(pred.shape[0])):
-            if mask[0, i] == 0:
-                break
-            idx_in_seq = i * jump_step
-            cur_pred_semantic = torch.argmax(pred[i], dim=1)
-            # Compute metrics for semantic labels
-            cur_gt_semantic = contacts_s[idx_in_seq].squeeze()
-            # cur_gt_semantic = torch.argmax(cur_gt_semantic, dim=1)
-            recon_semantics_acc += torch.mean((cur_pred_semantic == cur_gt_semantic).to(torch.float32))
+        pred = sample.float().to(device)
+        loss, loss_normals = chamfer_distance(pred, target_obj.float().to(device))
+        chamfer_s += loss
+        chamfer_list.append(chamfer_s)
+        # visualizer.destroy_window()
+        with open(os.path.join(output_dir, "results.txt"), "a+") as f:
+            f.write("Chamfer distance for seq {}: {:.4f}".format(seq_name, chamfer_s) + '\n')
 
-            cur_gt_semantic = general_utils.onehot_encode(cur_gt_semantic, num_obj_classes, device)
-            cur_pred_semantic = general_utils.onehot_encode(cur_pred_semantic, num_obj_classes, device)
-            num_obj_classes_appeared = 0
-            iou_s_cur = 0
-            f1_s_cur = 0
-            for class_idx in range(num_obj_classes):
-                if torch.sum(cur_gt_semantic[:, class_idx] > 0):
-                    num_obj_classes_appeared += 1
-                    iou_s_cur += general_utils.compute_iou(cur_gt_semantic[:, class_idx],
-                                                           cur_pred_semantic[:, class_idx])
-                    f1_s_cur += general_utils.compute_f1_score(cur_gt_semantic[:, class_idx],
-                                                               cur_pred_semantic[:, class_idx])
-            iou_s += iou_s_cur / num_obj_classes_appeared
-            f1_s += f1_s_cur / num_obj_classes_appeared
-
-            # Visualization
-            if visualize or save_video:
-                vis = []
-                vis += [scene]
-                vis += vis_utils.show_sample(verts[idx_in_seq, :, :], cur_pred_semantic.unsqueeze(0), faces_arr, True)
-            if visualize:
-                o3d.visualization.draw_geometries(vis)
-            if save_video:
-                for geometry in vis:
-                    visualizer.add_geometry(geometry)
-
-                ctr = visualizer.get_view_control()
-                parameters = o3d.io.read_pinhole_camera_parameters(cam_path)
-                ctr.convert_from_pinhole_camera_parameters(parameters)
-                visualizer.poll_events()
-                visualizer.update_renderer()
-                visualizer.capture_screen_image(
-                    os.path.join(output_image_dir, "frame_{:04d}.png".format(idx_in_seq)))
-                for geometry in vis:
-                    visualizer.remove_geometry(geometry)
-
-        pred = pred[:(int)(mask.sum())]
-
-        verts = verts[::jump_step]
-        verts = verts[:(int)(mask.sum())]
-        inconsistency = general_utils.compute_consistency_metric(pred, verts)
-        inconsistency_list.append(inconsistency)
-
-        iou_s /= mask.sum(); iou_s_list.append(iou_s)
-        f1_s /= mask.sum(); f1_s_list.append(f1_s)
-        recon_semantics_acc /= mask.sum(); recon_semantics_acc_list.append(recon_semantics_acc)
-
-        if save_video:
-            visualizer.destroy_window()
-            f = open(os.path.join(save_seq_model_dir, "results.txt"), "w")
-            f.write("IOU for semantic labels: {:.4f}".format(iou_s) + '\n')
-            f.write("F1-score for semantic labels: {:.4f}".format(f1_s) + '\n')
-            f.write("Reconstructed Semantics Accuracy: {:.4f}".format(recon_semantics_acc) + '\n')
-            f.write("Inconsistency score: {:.4f}".format(inconsistency) + '\n')
-
-    if do_valid:
-        f = open(os.path.join(output_dir, "validation_results_{}.txt".format(model_name)), "w")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"IOU for {seq_name}: {iou_s_list[i]:.4f}\n")
-        f.write("\n")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"F1-score for {seq_name}: {f1_s_list[i]:.4f}\n")
-        f.write("\n")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"Reconstructed Semantics Accuracy for {seq_name}: {recon_semantics_acc_list[i]:.4f}\n")
-        f.write("\n")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"Inconsistency score for {seq_name}: {inconsistency_list[i]:.4f}\n")
-        f.write("\n")
-        f.write("IOU for semantic labels: {:.4f}".format(list_mean(iou_s_list)) + '\n')
-        f.write("F1-score for semantic labels: {:.4f}".format(list_mean(f1_s_list)) + '\n')
-        f.write("Reconstructed Semantics Accuracy: {:.4f}".format(list_mean(recon_semantics_acc_list)) + '\n')
-        f.write("Inconsistency Score: {:.4f}".format(list_mean(inconsistency_list)) + '\n')
-
-    if do_train:
-        f = open(os.path.join(output_dir, "train_results_{}.txt".format(model_name)), "w")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"IOU for {seq_name}: {iou_s_list[i]:.4f}\n")
-        f.write("\n")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"F1-score for {seq_name}: {f1_s_list[i]:.4f}\n")
-        f.write("\n")
-        for i, seq_name in enumerate(seq_name_list):
-            f.write(f"Reconstructed Semantics Accuracy for {seq_name}: {recon_semantics_acc_list[i]:.4f}\n")
-        f.write("\n")
-        f.write("IOU for semantic labels: {:.4f}".format(list_mean(iou_s_list)) + '\n')
-        f.write("F1-score for semantic labels: {:.4f}".format(list_mean(f1_s_list)) + '\n')
-        f.write("Reconstructed Semantics Accuracy: {:.4f}".format(list_mean(recon_semantics_acc_list)) + '\n')
+    with open(os.path.join(output_dir, "results.txt"), "a+") as f:
+        f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')

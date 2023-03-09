@@ -49,7 +49,6 @@ class InputProcess(nn.Module):
         self.input_feats = input_feats
         self.extract_dim = extract_dim
         self.pose_embedding = nn.Sequential(
-            nn.Flatten(start_dim=-2),
             nn.Linear(self.input_feats, self.extract_dim),
             nn.GELU(),
         )
@@ -62,9 +61,10 @@ class InputProcess(nn.Module):
         x: torch.Tensor.shape([bs, seq_len, dims, cat])
         emb: torch.Tensor.shape([bs, seq_len, extract_dim])
         """
-        bs, seq_len, vert_dims, obj_cat = x.shape
+        bs, pcd_points, dim = x.shape
 
         if self.data_rep in ['rot6d', 'xyz', 'hml_vec']:
+            x = x.to(torch.float32)
             x = self.pose_embedding(x)
             x = torch.cat((x, emb), dim=-1)
             x = self.combination_extraction(x)
@@ -82,14 +82,12 @@ class InputProcess(nn.Module):
 
 
 class OutputProcess(nn.Module):
-    def __init__(self, data_rep, input_feats, extract_dim, seq_len, vert_dims, obj_cat):
+    def __init__(self, data_rep, input_feats, extract_dim, pcd_points):
         super().__init__()
         self.data_rep = data_rep
         self.input_feats = input_feats
         self.extract_dim = extract_dim
-        self.seq_len = seq_len
-        self.vert_dims = vert_dims
-        self.obj_cat = obj_cat
+        self.pcd_points = pcd_points
         self.pose_final = nn.Linear(self.extract_dim, self.input_feats)
         if self.data_rep == 'rot_vel':
             self.vel_final = nn.Linear(self.extract_dim, self.input_feats)
@@ -108,5 +106,5 @@ class OutputProcess(nn.Module):
             output = torch.cat((first_pose, vel), axis=0)  # [seqlen, bs, 150]
         else:
             raise ValueError
-        output = output.reshape(nframes, -1, self.vert_dims, self.obj_cat)
+        output = output.reshape(nframes, self.pcd_points, -1)
         return output

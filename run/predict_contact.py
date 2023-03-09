@@ -10,6 +10,59 @@ from util.model_util import create_model_and_diffusion
 
 # Example usage
 # python predict_contact.py ../data/amass --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir ../results/amass
+def _setup_static_objs(objs_dir, cases_dir):
+        _cat = {
+            "chair": 0,
+            "table": 1,
+            "cabinet": 2,
+            "sofa": 3,
+            "bed": 4,
+            "chest_of_drawers": 5,
+            "chest": 5,
+            "stool": 6,
+            "tv_monitor": 7,
+            "tv": 7,
+            "lighting": 8,
+            "shelving": 9,
+            "seating": 10,
+            "furniture": 11,
+        }
+        scenes = os.listdir(objs_dir)
+        max_objs = 8
+        objs = dict()
+        cats = dict()
+        handle = 2
+        pnt_size = 1024
+        for scene in scenes:
+            objs[scene] = dict()
+            cats[scene] = [-1 for _ in range(max_objs)]
+            case_path = os.path.join(cases_dir, scene)
+            case_fn = os.path.join(case_path, 'case_{}.txt'.format(handle))
+
+            with open(case_fn, 'r') as f:
+                given_objs, target_obj = f.readlines()
+                given_objs = given_objs.strip('\n').split(' ')
+            
+            # Read given objects
+            given_objs_tensor = torch.zeros(max_objs, pnt_size, 3)
+            for idx, given_obj in enumerate(given_objs):
+                given_cat = given_obj.split('_')[0]
+                cats[scene][idx] = _cat[given_cat]
+                given_obj_fn = os.path.join(objs_dir, scene, given_obj + '.npy')
+                with open(given_obj_fn, 'rb') as f:
+                    given_obj_verts = torch.from_numpy(np.load(f))
+                    given_objs_tensor[idx] = given_obj_verts
+
+            # Read target object
+            target_cat = target_obj.split('_')[0]
+            target_obj_fn = os.path.join(objs_dir, scene, target_obj + '.npy')
+            with open(target_obj_fn, 'rb') as f:
+                target_obj_verts = torch.from_numpy(np.load(f))
+        
+            objs[scene] = (given_objs_tensor, target_obj_verts)
+            cats[scene] = torch.tensor(cats[scene]), torch.tensor([_cat[target_cat]])
+        return objs, cats
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
@@ -69,6 +122,12 @@ if __name__ == '__main__':
     use_ddim = False  # FIXME - hardcoded
     clip_denoised = False  # FIXME - hardcoded
 
+    # Establish objects dir
+    pre_data_dir = data_dir.split('/')[0]
+    objs_dir = os.path.join(pre_data_dir, "objs")
+    cases_dir = os.path.join(pre_data_dir, "cases")
+    objs, cats = _setup_static_objs(objs_dir, cases_dir)
+
     # Load in model checkpoints and set up data stream
     model, diffusion = create_model_and_diffusion()
     model.eval()
@@ -95,14 +154,24 @@ if __name__ == '__main__':
         verts_can_padding = torch.zeros(max_frame - verts_can_batch.shape[0], *verts_can_batch.shape[1:], device=device)
         verts_can_batch = torch.cat((verts_can_batch, verts_can_padding), dim=0)
         verts_can_batch = verts_can_batch.unsqueeze(0)
+        scene = seq_name.split('_')[0]
+        given_objs, target_obj = objs[scene]
+        given_cats, target_cat = cats[scene]
+        given_objs =  given_objs.unsqueeze(0).to(device)
+        target_obj = target_obj.unsqueeze(0).to(device)
+        given_cats = given_cats.unsqueeze(0).to(device)
+        target_cat = target_cat.unsqueeze(0).to(device)
         cf_shape = [verts_can_batch.shape[0], verts_can_batch.shape[1], verts_can_batch.shape[2], num_obj_classes]
+        target_obj_shape = list(target_obj.shape)
 
         with torch.no_grad():
             sample = sample_fn(
                 model,
-                cf_shape,
+                target_obj_shape,
                 verts_can_batch,
-                mask=torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                given_objs,
+                given_cats,
                 y=["" for _ in range(verts_can_batch.shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
@@ -116,13 +185,14 @@ if __name__ == '__main__':
             )
             pr_cf = sample
 
-        pred = pr_cf.squeeze()
-        pred = pred[:(int)(mask.sum())]
+        pred = pr_cf
+        # pred = pred[:(int)(mask.sum())]
 
         cur_output_path = os.path.join(output_dir, seq_name + ".npy")
-        if save_probability:
-            softmax = torch.nn.Softmax(dim=2)
-            pred_npy = softmax(pred).detach().cpu().numpy()
-        else:
-            pred_npy = torch.argmax(pred, dim=-1).unsqueeze(-1).detach().cpu().numpy()
-        np.save(cur_output_path, pred_npy)
+        np.save(cur_output_path, pred.cpu().numpy())
+        # if save_probability:
+        #     softmax = torch.nn.Softmax(dim=2)
+        #     pred_npy = softmax(pred).detach().cpu().numpy()
+        # else:
+        #     pred_npy = torch.argmax(pred, dim=-1).unsqueeze(-1).detach().cpu().numpy()
+        # np.save(cur_output_path, pred_npy)

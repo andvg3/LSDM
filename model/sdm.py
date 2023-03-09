@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import clip
 
 from model.diffusion_utils import *
+from model.pcd_backbone.pointnet2 import get_backbone
 
 from posa.posa_models import Decoder as POSA_Decoder
 
@@ -12,14 +13,17 @@ from posa.posa_models import Decoder as POSA_Decoder
 
 class SceneDiffusionModel(nn.Module):
     def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=512, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
-                 d_hid=256, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=512, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
-                 data_rep='rot6d', njoints=251, use_cuda=True, **kwargs) -> None:
+                 d_hid=256, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
+                 data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, **kwargs) -> None:
         super().__init__()
         self.seg_len = seg_len
+        self.pcd_points = pcd_points
         self.clip_version = clip_version
         self.clip_dim = clip_dim
         self.latent_dim = latent_dim
-        self.extract_dim = clip_dim + latent_dim
+        self.pcd_dim = pcd_dim
+        self.xyz_dim = xyz_dim
+        self.extract_dim = self.latent_dim
         self.dropout = dropout
         self.cond_mask_prob = cond_mask_prob
         self.data_rep = data_rep
@@ -36,24 +40,35 @@ class SceneDiffusionModel(nn.Module):
 
         # Setup POSA embedding for human motions
         self.posa = POSA_Decoder(input_feats=obj_cat, ds_us_dir=mesh_ds_dir, use_semantics=True, channels=f_vert).to(self.device)
-        self.linear_extraction = nn.Sequential(
+        self.linear_extraction1 = nn.Sequential(
             nn.Flatten(start_dim=-2),
-            nn.Linear(self.input_feats, self.extract_dim),
+            nn.Linear(self.input_feats, self.latent_dim),
+            nn.GELU(),
+        ).to(self.device)
+
+        self.linear_extraction2 = nn.Sequential(
+            nn.Linear(self.seg_len, self.pcd_points),
+            nn.GELU(),
+        ).to(self.device)
+
+        # Setup pointcloud backbone for point cloud extraction
+        self.pcd_backbone = get_backbone().to(self.device)
+        self.pcd_extraction = nn.Sequential(
+            nn.Linear(self.pcd_dim, self.latent_dim),
             nn.GELU(),
         ).to(self.device)
 
         # Setup combination layers for extracted information
         self.combine_extraction = nn.Sequential(
-            nn.Linear(self.extract_dim + self.latent_dim * 2, self.extract_dim),
+            nn.Linear(self.latent_dim * 4, self.extract_dim),
             nn.GELU(),
         ).to(self.device)
 
         # Setup U-net-like input and output process
-        self.input_process = InputProcess(self.data_rep, self.input_feats, self.extract_dim).to(self.device)
-        self.output_process = OutputProcess(self.data_rep, self.input_feats, self.extract_dim, self.seg_len,
-                                            vert_dims, obj_cat).to(self.device)
+        self.input_process = InputProcess(self.data_rep, self.xyz_dim, self.extract_dim).to(self.device)
+        self.output_process = OutputProcess(self.data_rep, self.xyz_dim, self.extract_dim, self.pcd_points).to(self.device)
         
-    def forward(self, x, vertices, mask, timesteps, y=None, force_mask=False):
+    def forward(self, x, vertices, mask, timesteps, given_objs, given_cats, y=None, force_mask=False):
         """
         x: noisy signal - torch.Tensor.shape([bs, seq_len, dims, cat]). E.g, 1, 256, 655, 8
         vertices: torch.Tensor.shape([bs, seq_len, dim, 3])
@@ -61,7 +76,7 @@ class SceneDiffusionModel(nn.Module):
         timesteps: torch.Tensor.shape([bs,])
         y: modality, e.g., text
         """
-        bs, seq_len, dims, cat = x.shape
+        bs, seq_len, dims, cat = vertices.shape
 
         # Embed features from time
         emb_ts = self.embed_timestep(timesteps)
@@ -75,14 +90,25 @@ class SceneDiffusionModel(nn.Module):
         
         # Combine features from timestep and modality
         emb = torch.cat((emb_ts, emb_mod), dim=-1)
-        emb = emb.repeat(1, seq_len, 1)
+        emb = emb.repeat(1, self.pcd_points, 1)
 
         # Embed human motions
         posa_out = self.posa(vertices)
-        out = self.linear_extraction(posa_out)
+        posa_out = self.linear_extraction1(posa_out)
+        posa_out = posa_out.view(bs, -1, seq_len)
+        posa_out = self.linear_extraction2(posa_out)
+        posa_out = posa_out.permute(0, 2, 1)
+
+        # Embed point clouds feature
+        bs, num_obj, num_points, pcd_dim = given_objs.shape
+        given_objs = given_objs.view(bs * num_obj, num_points, pcd_dim)
+        pcd_out = self.pcd_backbone(given_objs)
+        pcd_out = pcd_out.view(bs, num_obj, num_points, -1)
+        pcd_out = pcd_out.mean(axis=1)
+        pcd_out = self.pcd_extraction(pcd_out)
 
         # Final embedding features
-        emb = torch.cat((out, emb), dim=-1)
+        emb = torch.cat((emb, posa_out, pcd_out), dim=-1)
         emb = self.combine_extraction(emb)
 
         # Reconstruct features

@@ -34,7 +34,7 @@ def get_default_model():
         'd_hid': 256, 
         'mesh_ds_dir': "data/mesh_ds", 
         'posa_path': None, 
-        'latent_dim': 256, 
+        'latent_dim': 32, 
         'cond_mask_prob': 1.0, 
         'device': 0, 
         'vert_dims': 655, 

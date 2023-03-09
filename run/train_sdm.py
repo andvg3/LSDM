@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.optim import AdamW
 
 from posa.posa_utils import count_parameters
-from posa.dataset import ProxDataset_ds
+from posa.dataset import ProxDataset_txt
 from posa.general_utils import compute_recon_loss, compute_delta
 
 from diffusion.resample import create_named_schedule_sampler
@@ -49,12 +49,16 @@ def train():
     total_train_loss = 0
 
     n_steps = 0
-    for verts_can, contacts_s, mask in tqdm(train_data_loader):
+    for verts_can, contacts_s, mask, given_objs, given_cats, target_obj, target_cat in tqdm(train_data_loader):
         # Initialize params of the training batch
         # verts_can: (bs, seg_len, Nverts, 3), contacts_s: (bs, seg_len, Nverts, 8)
         verts_can = verts_can.to(device)
         gt_cf = contacts_s.to(device)  # ground truth contact features
         mask = mask.to(device)
+        given_objs = given_objs.to(device)
+        given_cats = given_objs.to(device)
+        target_obj = target_obj.to(device)
+        target_cat = target_cat.to(device)
         t, weights = schedule_sampler.sample(verts_can.shape[0], device)
 
         # Initialize the optimizer's step
@@ -64,10 +68,12 @@ def train():
         compute_losses = functools.partial(
             diffusion.training_losses,
             model,
-            gt_cf, # [bs, ch, image_size, image_size]
+            target_obj, # [bs, ch, image_size, image_size]
             verts_can,
             mask,
             t,  # [bs](int) sampled timesteps
+            given_objs,
+            given_cats,
             y=["" for _ in range(verts_can.shape[0])],
         )
         losses = compute_losses()
@@ -115,17 +121,23 @@ def validate():
         total_semantics_recon_acc = 0
 
         n_steps = 0
-        for verts_can, contacts_s, mask in tqdm(valid_data_loader):
+        for verts_can, contacts_s, mask, given_objs, given_cats, target_obj, target_cat in tqdm(valid_data_loader):
             # verts_can: (bs, seg_len, Nverts, 3), contacts: (bs, seg_len, Nverts, 1), contacts_s: (bs, seg_len, Nverts, 42)
             verts_can = verts_can.to(device).squeeze()
             gt_cf = contacts_s.to(device)
             mask = mask.to(device)
+            given_objs = given_objs.to(device)
+            given_cats = given_objs.to(device)
+            target_obj = target_obj.to(device)
+            target_cat = target_cat.to(device)
 
             sample = sample_fn(
                 model,
-                gt_cf.shape,
+                target_obj.shape,
                 verts_can,
                 mask,
+                given_objs,
+                given_cats,
                 y=["" for _ in range(verts_can.shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
@@ -141,11 +153,14 @@ def validate():
             # pr_cf: (bs, seg_len, 655, 43), mu: (bs, 256), logvar: (bs, 256)
             # z = torch.tensor(np.random.normal(0, 1, (max_frame, 256)).astype(np.float32)).to(device)
             # posa_out = model.posa(z, verts_can)
-            pr_cf = sample
-            recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
+            pr_pnts = sample
+            gt_pnts = target_obj
+            recon_loss_semantics = ((pr_pnts-gt_pnts)**2).mean()
+            semantics_recon_acc = 0.0
+            # recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
 
-            total_recon_loss_semantics += recon_loss_semantics.item()
-            total_semantics_recon_acc += semantics_recon_acc.item()
+            total_recon_loss_semantics += recon_loss_semantics
+            total_semantics_recon_acc += semantics_recon_acc
             n_steps += 1
 
         total_recon_loss_semantics /= n_steps
@@ -225,12 +240,12 @@ if __name__ == '__main__':
     dtype = torch.float32
     kl_w = 0.5
 
-    train_dataset = ProxDataset_ds(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+    train_dataset = ProxDataset_txt(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    train_data_loader = DataLoader(train_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
-    valid_dataset = ProxDataset_ds(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+    train_data_loader = DataLoader(train_dataset, batch_size=10, shuffle=True, num_workers=num_workers)
+    valid_dataset = ProxDataset_txt(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=10, shuffle=True, num_workers=num_workers)
 
     # Create model and diffusion object
     model, diffusion = create_model_and_diffusion()

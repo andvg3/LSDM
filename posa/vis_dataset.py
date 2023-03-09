@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_dir", type=str, default="data/proxd_train",
                         help="path to POSA_temp dataset dir")
     parser.add_argument("--save_video", dest='save_video', action='store_const', const=True, default=False)
-    parser.add_argument("--save_video_dir", type=str, default="../new_output/gt_dataset_video/",
+    parser.add_argument("--save_video_dir", type=str, default="new_output/gt_dataset_video/",
                         help="the path to save results from temp posa")
     parser.add_argument("--cam_setting_path", type=str, default="./support_files/ScreenCamera_0.json",
                         help="the path to camera settings in open3d")

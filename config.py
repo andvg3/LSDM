@@ -1,6 +1,7 @@
 classes_eps = {
     3:  0.2, # chair
     5:  1.0, # table
+    7: 0.2, # cabinet
     10: 0.8, # sofa
     11: 1.0, # bed
     19: 0.2  # stool
@@ -21,6 +22,7 @@ params = {
         "grid_search_classes_pen_weight": {
             3:  10,  # chair
             5:  10,  # table
+            7:  10, # cabinet
             10: 10,  # sofa
             11: 10,  # bed
             19: 10   # stool
@@ -32,6 +34,7 @@ params = {
         "opt_classes_pen_weight": {
             3:  1,   # chair
             5:  100, # table
+            7:  1, # cabinet
             10: 10,  # sofa
             11: 10,  # bed
             19: 1    # stool

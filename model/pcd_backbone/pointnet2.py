@@ -41,7 +41,7 @@ class get_model(nn.Module):
 
 
 class get_backbone(nn.Module):
-    def __init__(self, dimension=3):
+    def __init__(self, num_classes, dimension=3):
         super(get_backbone, self).__init__()
         self.sa1 = PointNetSetAbstraction(1024, 0.1, 32, dimension + 3, [32, 32, 64], False)
         self.sa2 = PointNetSetAbstraction(256, 0.2, 32, 64 + 3, [64, 64, 128], False)
@@ -51,6 +51,12 @@ class get_backbone(nn.Module):
         self.fp3 = PointNetFeaturePropagation(384, [256, 256])
         self.fp2 = PointNetFeaturePropagation(320, [256, 128])
         self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
+
+        self.fp1 = PointNetFeaturePropagation(128, [128, 128, 128])
+        self.conv1 = nn.Conv1d(128, 128, 1)
+        self.bn1 = nn.BatchNorm1d(128)
+        self.drop1 = nn.Dropout(0.5)
+        self.conv2 = nn.Conv1d(128, num_classes, 1)
 
     def forward(self, xyz):
         xyz = xyz.permute(0, 2, 1)
@@ -67,7 +73,11 @@ class get_backbone(nn.Module):
         l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
         l0_points = self.fp1(l0_xyz, l1_xyz, None, l1_points)
 
-        return l0_points
+        x = self.drop1(F.relu(self.bn1(self.conv1(l0_points))))
+        x = self.conv2(x)
+        x = F.log_softmax(x, dim=1)
+        x = x.permute(0, 2, 1)
+        return x
 
 
 class get_loss(nn.Module):
@@ -80,7 +90,7 @@ class get_loss(nn.Module):
 
 if __name__ == '__main__':
     import  torch
-    model = get_backbone()
+    model = get_backbone(num_classes)
     xyz = torch.rand(48, 1024, 3)
     l0_points = model(xyz)
     print(l0_points.data.shape)

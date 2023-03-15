@@ -274,7 +274,7 @@ class GaussianDiffusion:
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
     def p_mean_variance(
-        self, model, x, vertices, mask, t, given_objs, given_cats, y, clip_denoised=True, denoised_fn=None, model_kwargs=None
+        self, model, x, mask, t, given_objs, given_cats, y, clip_denoised=True, denoised_fn=None, model_kwargs=None
     ):
         """
         Apply the model to get p(x_{t-1} | x_t), as well as a prediction of
@@ -301,7 +301,7 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, vertices, mask, self._scale_timesteps(t), given_objs, given_cats, y)
+        model_output = model(x, mask, self._scale_timesteps(t), given_objs, given_cats, y)
 
         # if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
         #     inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
@@ -496,7 +496,6 @@ class GaussianDiffusion:
         self,
         model,
         x,
-        vertices,
         mask,
         t,
         given_objs, 
@@ -528,7 +527,6 @@ class GaussianDiffusion:
         out = self.p_mean_variance(
             model,
             x,
-            vertices,
             mask,
             t,
             given_objs, 
@@ -608,7 +606,6 @@ class GaussianDiffusion:
         self,
         model,
         shape,
-        vertices,
         mask,
         given_objs, 
         given_cats,
@@ -654,7 +651,6 @@ class GaussianDiffusion:
         for i, sample in enumerate(self.p_sample_loop_progressive(
             model,
             shape,
-            vertices,
             mask,
             given_objs, 
             given_cats,
@@ -683,7 +679,6 @@ class GaussianDiffusion:
         self,
         model,
         shape,
-        vertices,
         mask,
         given_objs, 
         given_cats,
@@ -743,7 +738,6 @@ class GaussianDiffusion:
                 out = sample_fn(
                     model,
                     img,
-                    vertices,
                     mask,
                     t,
                     given_objs, 
@@ -1253,7 +1247,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, cf, vertices, mask, t, given_objs, given_cats, y=None, noise=None):
+    def training_losses(self, model, cf, mask, t, given_objs, given_cats, y=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1291,7 +1285,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x_t, vertices, mask, self._scale_timesteps(t), given_objs, given_cats, y)
+            model_output = model(x_t, mask, self._scale_timesteps(t), given_objs, given_cats, y)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,

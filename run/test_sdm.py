@@ -48,11 +48,13 @@ def _setup_static_objs(objs_dir, cases_dir):
         max_objs = 8
         objs = dict()
         cats = dict()
+        masks = dict()
         handle = 2
         pnt_size = 1024
         for scene in scenes:
             objs[scene] = dict()
             cats[scene] = [-1 for _ in range(max_objs)]
+            masks[scene] = torch.ones(max_objs+1)
             case_path = os.path.join(cases_dir, scene)
             case_fn = os.path.join(case_path, 'case_{}.txt'.format(handle))
 
@@ -61,6 +63,9 @@ def _setup_static_objs(objs_dir, cases_dir):
                 given_objs = given_objs.strip('\n').split(' ')
             
             # Read given objects
+            first_idx = len(given_objs)
+            for i in range(first_idx, max_objs+1):
+                masks[scene][i] = 0
             given_objs_tensor = torch.zeros(max_objs, pnt_size, 3)
             for idx, given_obj in enumerate(given_objs):
                 given_cat = given_obj.split('_')[0]
@@ -78,7 +83,7 @@ def _setup_static_objs(objs_dir, cases_dir):
         
             objs[scene] = (given_objs_tensor, target_obj_verts)
             cats[scene] = torch.tensor(cats[scene]), torch.tensor([_cat[target_cat]])
-        return objs, cats
+        return objs, cats, masks
 
 
 if __name__ == '__main__':
@@ -154,6 +159,7 @@ if __name__ == '__main__':
 
     device = torch.device("cuda")
     num_obj_classes = 8
+    pnt_size = 1024
     # For fix_ori
     ds_weights = torch.tensor(np.load("posa/support_files/downsampled_weights.npy"))
     associated_joints = torch.argmax(ds_weights, dim=1)
@@ -170,7 +176,7 @@ if __name__ == '__main__':
     pre_data_dir = data_dir.split('/')[0]
     objs_dir = os.path.join(pre_data_dir, "objs")
     cases_dir = os.path.join(pre_data_dir, "cases")
-    objs, cats = _setup_static_objs(objs_dir, cases_dir)
+    objs, cats, masks = _setup_static_objs(objs_dir, cases_dir)
 
     if do_valid or do_train:
         vertices_file_list = os.listdir(vertices_dir)
@@ -197,6 +203,7 @@ if __name__ == '__main__':
         scene = seq_name.split('_')[0]
         given_objs, target_obj = objs[scene]
         given_cats, target_cat = cats[scene]
+        mask = masks[scene]
         given_objs =  given_objs.unsqueeze(0).to(device)
         target_obj = target_obj.unsqueeze(0).to(device)
         given_cats = given_cats.unsqueeze(0).to(device)
@@ -204,6 +211,9 @@ if __name__ == '__main__':
         verts = torch.tensor(np.load(os.path.join(vertices_dir, seq_name + "_verts.npy"))).to(device)
         verts_can = torch.tensor(np.load(os.path.join(vertices_can_dir, seq_name + "_verts_can.npy"))).to(device)
         contacts_s = torch.tensor(np.load(os.path.join(contacts_s_dir, seq_name + "_cfs.npy"))).to(device)
+        ret_verts_can = torch.cat((verts_can[0], verts_can[1]))[:pnt_size].unsqueeze(0).unsqueeze(0)
+        given_objs = torch.cat((ret_verts_can, given_objs), dim=1)
+
 
         if save_video:
             visualizer = o3d.visualization.Visualizer()
@@ -229,28 +239,17 @@ if __name__ == '__main__':
             diffusion.p_sample_loop if not use_ddim else diffusion.ddim_sample_loop
         )
 
-        verts_can_batch = verts_can[::jump_step]
-        if fix_ori:
-            verts_can_batch = du.normalize_orientation(verts_can_batch, associated_joints, device)
-        if verts_can_batch.shape[0] > max_frame:
-            verts_can_batch = verts_can_batch[:max_frame]
-
-        mask = torch.zeros(1, max_frame, device=device)
-        mask[0, :verts_can_batch.shape[0]] = 1
-        verts_can_padding = torch.zeros(max_frame - verts_can_batch.shape[0], *verts_can_batch.shape[1:], device=device)
-        verts_can_batch = torch.cat((verts_can_batch, verts_can_padding), dim=0)
-        verts_can_batch = verts_can_batch.unsqueeze(0)
+        mask = mask.unsqueeze(0).to(device)
         target_obj_shape = list(target_obj.shape)
 
         with torch.no_grad():
             sample = sample_fn(
                 model,
                 target_obj_shape,
-                verts_can_batch,
-                torch.ones(verts_can_batch.shape[0], verts_can_batch.shape[1]),
+                mask,
                 given_objs,
                 given_cats,
-                y=["" for _ in range(verts_can_batch.shape[0])],
+                y=["" for _ in range(target_obj_shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step

@@ -49,17 +49,15 @@ def train():
     total_train_loss = 0
 
     n_steps = 0
-    for verts_can, contacts_s, mask, given_objs, given_cats, target_obj, target_cat in tqdm(train_data_loader):
+    for mask, given_objs, given_cats, target_obj, target_cat in tqdm(train_data_loader):
         # Initialize params of the training batch
         # verts_can: (bs, seg_len, Nverts, 3), contacts_s: (bs, seg_len, Nverts, 8)
-        verts_can = verts_can.to(device)
-        gt_cf = contacts_s.to(device)  # ground truth contact features
         mask = mask.to(device)
         given_objs = given_objs.to(device)
-        given_cats = given_objs.to(device)
+        given_cats = given_cats.to(device)
         target_obj = target_obj.to(device)
         target_cat = target_cat.to(device)
-        t, weights = schedule_sampler.sample(verts_can.shape[0], device)
+        t, weights = schedule_sampler.sample(target_obj.shape[0], device)
 
         # Initialize the optimizer's step
         mp_trainer.zero_grad()
@@ -69,12 +67,11 @@ def train():
             diffusion.training_losses,
             model,
             target_obj, # [bs, ch, image_size, image_size]
-            verts_can,
             mask,
             t,  # [bs](int) sampled timesteps
             given_objs,
             given_cats,
-            y=["" for _ in range(verts_can.shape[0])],
+            y=["" for _ in range(target_obj.shape[0])],
         )
         losses = compute_losses()
         loss = (losses["loss"] * weights).mean()
@@ -121,24 +118,21 @@ def validate():
         total_semantics_recon_acc = 0
 
         n_steps = 0
-        for verts_can, contacts_s, mask, given_objs, given_cats, target_obj, target_cat in tqdm(valid_data_loader):
+        for mask, given_objs, given_cats, target_obj, target_cat in tqdm(valid_data_loader):
             # verts_can: (bs, seg_len, Nverts, 3), contacts: (bs, seg_len, Nverts, 1), contacts_s: (bs, seg_len, Nverts, 42)
-            verts_can = verts_can.to(device).squeeze()
-            gt_cf = contacts_s.to(device)
             mask = mask.to(device)
             given_objs = given_objs.to(device)
-            given_cats = given_objs.to(device)
+            given_cats = given_cats.to(device)
             target_obj = target_obj.to(device)
             target_cat = target_cat.to(device)
 
             sample = sample_fn(
                 model,
                 target_obj.shape,
-                verts_can,
                 mask,
                 given_objs,
                 given_cats,
-                y=["" for _ in range(verts_can.shape[0])],
+                y=["" for _ in range(target_obj.shape[0])],
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step

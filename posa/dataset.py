@@ -425,16 +425,22 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         self.scenes = os.listdir(self.objs_dir)
         self.objs = dict()
         self.cats = dict()
+        self.masks = dict()
         for scene in self.scenes:
             self.objs[scene] = dict()
-            self.cats[scene] = [-1 for _ in range(self.max_objs)]
+            self.cats[scene] = [-1 for _ in range(self.max_objs+1)]
+            self.masks[scene] = torch.ones(self.max_objs+1)
             case_path = os.path.join(self.cases_dir, scene)
             case_fn = os.path.join(case_path, 'case_{}.txt'.format(self.handle))
 
             with open(case_fn, 'r') as f:
                 given_objs, target_obj = f.readlines()
                 given_objs = given_objs.strip('\n').split(' ')
-            
+
+            # Mask objects
+            first_idx = len(given_objs)
+            for i in range(first_idx, self.max_objs+1):
+                self.masks[scene][i] = 0
             # Read given objects
             given_objs_tensor = torch.zeros(self.max_objs, self.pnt_size, 3)
             for idx, given_obj in enumerate(given_objs):
@@ -463,6 +469,7 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         scene = seq_name.split('_')[0]
         given_objs, target_obj = self.objs[scene]
         given_cats, target_cat = self.cats[scene]
+        object_mask = self.masks[scene]
         verts_can = self.vertices_can_dict[seq_name]
         contacts_s = self.contacts_s_dict[seq_name]
         verts = self.vertices_dict[seq_name]
@@ -482,7 +489,7 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
             ret_verts_can = du.normalize_orientation(ret_verts_can, self.associated_joints, torch.device("cpu"))
         ret_contacts_s = contacts_s[start_idx:end_idx:self.jump_step]
 
-        # masking
+        # Masking
         seg_len = ret_verts_can.shape[0]
         mask = torch.zeros(self.max_frame)
         mask[:seg_len] = 1
@@ -491,16 +498,18 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         ret_contacts_s_pad = torch.zeros(self.max_frame - seg_len, *ret_contacts_s.shape[1:])
         ret_contacts_s = torch.cat([ret_contacts_s, ret_contacts_s_pad], dim=0)
 
-        return ret_verts_can, ret_contacts_s, mask, given_objs, given_cats, target_obj, target_cat
+        # Process verts to point clouds
+        ret_verts_can = torch.cat((ret_verts_can[0], ret_verts_can[1]))[:self.pnt_size].unsqueeze(0)
+        given_objs = torch.cat((ret_verts_can, given_objs), dim=0)
+
+        return object_mask, given_objs, given_cats, target_obj, target_cat
 
 
 if __name__ == "__main__":
     train_dataset = ProxDataset_txt("data/proxd_train", fix_orientation=True, max_frame=220, jump_step=8)
     train_data_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=0)
-    verts_can, contacts_s, mask, given_objs, given_cats, target_obj, target_cat = next(iter(train_data_loader))
-    print(verts_can.shape)
-    print(contacts_s.shape)
-    print(mask.shape)
+    mask, given_objs, given_cats, target_obj, target_cat = next(iter(train_data_loader))
+    print(mask)
     print(given_objs.shape)
     print(target_obj.shape)
     print(given_cats, target_cat)

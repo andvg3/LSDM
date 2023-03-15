@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn import MultiheadAttention
 import clip
 
 from model.diffusion_utils import *
@@ -28,6 +29,7 @@ class SceneDiffusionModel(nn.Module):
         self.cond_mask_prob = cond_mask_prob
         self.data_rep = data_rep
         self.input_feats = vert_dims * obj_cat
+        self.n_head = n_head
         self.device = "cuda:{}".format(device) if use_cuda else "cpu"
 
         # Setup modality for the model, e.g., text.
@@ -38,21 +40,14 @@ class SceneDiffusionModel(nn.Module):
         self.sequence_pos_encoder = PositionalEncoding(self.latent_dim, self.dropout, device=self.device)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.sequence_pos_encoder, device=self.device)
 
-        # Setup POSA embedding for human motions
-        self.posa = POSA_Decoder(input_feats=obj_cat, ds_us_dir=mesh_ds_dir, use_semantics=True, channels=f_vert).to(self.device)
-        self.linear_extraction1 = nn.Sequential(
-            nn.Flatten(start_dim=-2),
-            nn.Linear(self.input_feats, self.latent_dim),
-            nn.GELU(),
-        ).to(self.device)
-
+        self.attn_layer = MultiheadAttention(embed_dim=clip_dim, num_heads=n_head, kdim=pcd_points*pcd_dim, vdim=pcd_points*pcd_dim, batch_first=True).to(self.device)
         self.linear_extraction2 = nn.Sequential(
             nn.Linear(self.seg_len, self.pcd_points),
             nn.GELU(),
         ).to(self.device)
 
         # Setup pointcloud backbone for point cloud extraction
-        self.pcd_backbone = get_backbone().to(self.device)
+        self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
         self.pcd_extraction = nn.Sequential(
             nn.Linear(self.pcd_dim, self.latent_dim),
             nn.GELU(),
@@ -60,7 +55,7 @@ class SceneDiffusionModel(nn.Module):
 
         # Setup combination layers for extracted information
         self.combine_extraction = nn.Sequential(
-            nn.Linear(self.latent_dim * 4, self.extract_dim),
+            nn.Linear(self.latent_dim * 2 + pcd_dim, self.extract_dim),
             nn.GELU(),
         ).to(self.device)
 
@@ -68,7 +63,7 @@ class SceneDiffusionModel(nn.Module):
         self.input_process = InputProcess(self.data_rep, self.xyz_dim, self.extract_dim).to(self.device)
         self.output_process = OutputProcess(self.data_rep, self.xyz_dim, self.extract_dim, self.pcd_points).to(self.device)
         
-    def forward(self, x, vertices, mask, timesteps, given_objs, given_cats, y=None, force_mask=False):
+    def forward(self, x, mask, timesteps, given_objs, given_cats, y=None, force_mask=False):
         """
         x: noisy signal - torch.Tensor.shape([bs, seq_len, dims, cat]). E.g, 1, 256, 655, 8
         vertices: torch.Tensor.shape([bs, seq_len, dim, 3])
@@ -76,8 +71,6 @@ class SceneDiffusionModel(nn.Module):
         timesteps: torch.Tensor.shape([bs,])
         y: modality, e.g., text
         """
-        bs, seq_len, dims, cat = vertices.shape
-
         # Embed features from time
         emb_ts = self.embed_timestep(timesteps)
         emb_ts = emb_ts.permute(1, 0, 2)
@@ -92,23 +85,23 @@ class SceneDiffusionModel(nn.Module):
         emb = torch.cat((emb_ts, emb_mod), dim=-1)
         emb = emb.repeat(1, self.pcd_points, 1)
 
-        # Embed human motions
-        posa_out = self.posa(vertices)
-        posa_out = self.linear_extraction1(posa_out)
-        posa_out = posa_out.view(bs, -1, seq_len)
-        posa_out = self.linear_extraction2(posa_out)
-        posa_out = posa_out.permute(0, 2, 1)
-
         # Embed point clouds feature
         bs, num_obj, num_points, pcd_dim = given_objs.shape
         given_objs = given_objs.view(bs * num_obj, num_points, pcd_dim)
         pcd_out = self.pcd_backbone(given_objs)
-        pcd_out = pcd_out.view(bs, num_obj, num_points, -1)
-        pcd_out = pcd_out.mean(axis=1)
-        pcd_out = self.pcd_extraction(pcd_out)
+        pcd_out = pcd_out.reshape(bs, num_obj, -1)
+
+        # Pass through attention layer to attain attention matrix
+        enc_text = enc_text.unsqueeze(1)
+        mask = mask.unsqueeze(1)
+        mask = mask.repeat(self.n_head, 1, 1)
+        attn_output, attn_output_weights = self.attn_layer(enc_text, pcd_out, pcd_out, attn_mask=mask)
+        pcd_out = pcd_out.permute(0, 2, 1)
+        pcd_out = pcd_out * attn_output_weights
+        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1).mean(dim=1)
 
         # Final embedding features
-        emb = torch.cat((emb, posa_out, pcd_out), dim=-1)
+        emb = torch.cat((emb, pcd_out), dim=-1)
         emb = self.combine_extraction(emb)
 
         # Reconstruct features

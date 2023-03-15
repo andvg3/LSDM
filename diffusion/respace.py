@@ -122,9 +122,9 @@ class _WrappedModel:
         self.original_num_steps = original_num_steps
 
     # def __call__(self, x, ts, **kwargs):
-    def __call__(self, x_t, vertices, mask, ts, given_objs, given_cats, y):
+    def __call__(self, x_t, mask, ts, given_objs, given_cats, y):
         map_tensor = th.tensor(self.timestep_map, device=ts.device, dtype=ts.dtype)
         new_ts = map_tensor[ts]
         if self.rescale_timesteps:
             new_ts = new_ts.float() * (1000.0 / self.original_num_steps)
-        return self.model(x_t, vertices, mask, ts, given_objs, given_cats, y)
+        return self.model(x_t, mask, ts, given_objs, given_cats, y)

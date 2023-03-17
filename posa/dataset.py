@@ -347,7 +347,8 @@ class ProxDataset_ds(Dataset):    # when jump_step=8, for a whole seq, dataset's
 
 class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset's max_frame is 165, max num_seg is 29
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, max_frame=220,
-                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, max_objs=8, pnt_size=1024, **kwargs):
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, max_objs=8, pnt_size=1024, 
+                 objs_data_dir='data/objs', max_cats=13, **kwargs):
         '''
             data_dir: directory that stores processed PROXD dataset.
             fix_orientation: flag that specifies whether we always make the first pose in a motion sequence facing
@@ -362,33 +363,31 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         self.data_dir = data_dir
         self.max_objs = max_objs
         self.pnt_size = pnt_size
-        pre_data_dir = data_dir.split('/')[0]
+        self.max_cats = max_cats
         
         # Setup handle case for dataset: 0 for training, 1 for testing
         is_train = self.data_dir.split('_')[1]
         self.handle = 0 if is_train == 'train' else 1
-        self.contacts_s_dir = os.path.join(data_dir, "semantics")
-        self.vertices_can_dir = os.path.join(data_dir, "vertices_can")
-        self.vertices_dir = os.path.join(data_dir, "vertices")
-        self.objs_dir = os.path.join(pre_data_dir, "objs")
-        self.cases_dir = os.path.join(pre_data_dir, "cases")
-        self.seq_names = [f.split('cfs')[0] for f in os.listdir(self.contacts_s_dir)]
+        self.objs_dir = objs_data_dir
+        self.context_dir = os.path.join(data_dir, "context")
+        self.reduced_verts_dir = os.path.join(data_dir, "reduced_vertices")
+        self.seq_names = [f.split('.txt')[0] for f in os.listdir(self.context_dir)]
 
         # Setup reading object files and cases
         self._setup_static_objs()
 
         # Initialize for human sequences
-        self.vertices_can_dict = dict()
-        self.vertices_dict = dict()
-        self.contacts_s_dict = dict()
-        self.max_frame = max_frame
+        self.reduced_verts_dict = dict()
+        self.context_dict = dict()
 
         self.total_frames = 0
         for seq_name in self.seq_names:
-            self.vertices_can_dict[seq_name] = torch.tensor(np.load(os.path.join(self.vertices_can_dir, seq_name + "verts_can.npy")), dtype=torch.float32)
-            self.contacts_s_dict[seq_name] = torch.tensor(np.load(os.path.join(self.contacts_s_dir, seq_name + "cfs.npy")), dtype=torch.float32)
-            self.vertices_dict[seq_name] = torch.tensor(np.load(os.path.join(self.vertices_dir, seq_name + "verts.npy")), dtype=torch.float32)
-            self.total_frames += self.vertices_can_dict[seq_name].shape[0]
+            self.reduced_verts_dict[seq_name] = torch.tensor(np.load(os.path.join(self.reduced_verts_dir, seq_name + ".npy")), dtype=torch.float32)
+            with open(os.path.join(self.context_dir, seq_name + ".txt")) as f:
+                text_prompt, given_objs, target_obj = f.readlines()
+                text_prompt = text_prompt.strip('\n')
+                given_objs = given_objs.strip('\n').split(' ')
+                self.context_dict[seq_name] = (text_prompt, given_objs, target_obj)
 
         self.fix_orientation = fix_orientation
         self.no_obj_classes = no_obj_classes
@@ -405,114 +404,86 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
     @property
     def _cat(self):
         return {
-            "chair": 0,
-            "table": 1,
-            "cabinet": 2,
-            "sofa": 3,
-            "bed": 4,
-            "chest_of_drawers": 5,
-            "chest": 5,
-            "stool": 6,
-            "tv_monitor": 7,
-            "tv": 7,
-            "lighting": 8,
-            "shelving": 9,
-            "seating": 10,
-            "furniture": 11,
+            "chair": 1,
+            "table": 2,
+            "cabinet": 3,
+            "sofa": 4,
+            "bed": 5,
+            "chest_of_drawers": 6,
+            "chest": 6,
+            "stool": 7,
+            "tv_monitor": 8,
+            "tv": 8,
+            "lighting": 9,
+            "shelving": 10,
+            "seating": 11,
+            "furniture": 12,
+            "human": 0,
         }
 
     def _setup_static_objs(self):
         self.scenes = os.listdir(self.objs_dir)
         self.objs = dict()
         self.cats = dict()
-        self.masks = dict()
         for scene in self.scenes:
             self.objs[scene] = dict()
-            self.cats[scene] = [-1 for _ in range(self.max_objs+1)]
-            self.masks[scene] = torch.ones(self.max_objs+1)
-            case_path = os.path.join(self.cases_dir, scene)
-            case_fn = os.path.join(case_path, 'case_{}.txt'.format(self.handle))
-
-            with open(case_fn, 'r') as f:
-                given_objs, target_obj = f.readlines()
-                given_objs = given_objs.strip('\n').split(' ')
-
-            # Mask objects
-            first_idx = len(given_objs)
-            for i in range(first_idx, self.max_objs+1):
-                self.masks[scene][i] = 0
-            # Read given objects
-            given_objs_tensor = torch.zeros(self.max_objs, self.pnt_size, 3)
-            for idx, given_obj in enumerate(given_objs):
-                given_cat = given_obj.split('_')[0]
-                self.cats[scene][idx] = self._cat[given_cat]
-                given_obj_fn = os.path.join(self.objs_dir, scene, given_obj + '.npy')
-                with open(given_obj_fn, 'rb') as f:
-                    given_obj_verts = torch.from_numpy(np.load(f))
-                    given_objs_tensor[idx] = given_obj_verts
-
-            # Read target object
-            target_cat = target_obj.split('_')[0]
-            target_obj_fn = os.path.join(self.objs_dir, scene, target_obj + '.npy')
-            with open(target_obj_fn, 'rb') as f:
-                target_obj_verts = torch.from_numpy(np.load(f))
-        
-            self.objs[scene] = (given_objs_tensor, target_obj_verts)
-            self.cats[scene] = torch.tensor(self.cats[scene]), torch.tensor([self._cat[target_cat]])
-
+            self.cats[scene] = dict()
+            
+            objs_list = os.listdir(os.path.join(self.objs_dir, scene))
+            for obj_file in objs_list:
+                obj = obj_file[:-4]
+                cat = obj.split('.')[0].split('_')[0]
+                # Read vertices of objects
+                with open(os.path.join(self.objs_dir, scene, obj_file), 'rb') as f:
+                    verts = np.load(f)
+                self.objs[scene][obj] = verts
+                self.cats[scene][obj] = self._cat[cat]
+            
     def __len__(self):
-        return self.step_multiplier * self.total_frames // self.max_frame
+        return len(self.seq_names)
 
     def __getitem__(self, idx):
-        seq_idx = torch.randint(len(self.seq_names), size=(1,))
+        # seq_idx = torch.randint(len(self.seq_names), size=(1,))
+        seq_idx = idx
         seq_name = self.seq_names[seq_idx]
         scene = seq_name.split('_')[0]
-        given_objs, target_obj = self.objs[scene]
-        given_cats, target_cat = self.cats[scene]
-        object_mask = self.masks[scene]
-        verts_can = self.vertices_can_dict[seq_name]
-        contacts_s = self.contacts_s_dict[seq_name]
-        verts = self.vertices_dict[seq_name]
+        all_objs = self.objs[scene]
+        all_cats = self.cats[scene]
+        text_prompt, given_objs, target_obj = self.context_dict[seq_name]
+        human_verts = self.reduced_verts_dict[seq_name]
 
-        contacts_s = torch.zeros(*contacts_s.shape, self.no_obj_classes, dtype=torch.float32)\
-            .scatter_(-1, contacts_s.unsqueeze(-1).type(torch.long), 1.)
+        # Initialize for objects, note that, the first object is human
+        obj_verts = torch.zeros(self.max_objs+1, self.pnt_size, 3)
+        obj_verts[0] = human_verts.clone().detach()
+        obj_mask = torch.zeros(self.max_objs+1)
+        obj_mask[0] = 1
+        obj_cats = torch.zeros(self.max_objs+1, self.max_cats)
+        obj_cats[0][self._cat['human']] = 1
+        for idx, obj in enumerate(given_objs):
+            cat = obj.split('_')[0]
+            obj_verts[idx+1] = torch.tensor(all_objs[obj])
+            obj_mask[idx+1] = 1
+            obj_cats[idx+1][self._cat[cat]] = 1
 
-        if self.max_frame * self.jump_step > verts.shape[0]:
-            start_idx = torch.randint(self.jump_step, size=(1,))
-            end_idx = verts.shape[0]
-        else:
-            start_idx = torch.randint(verts.shape[0] - self.max_frame * self.jump_step, size=(1,))
-            end_idx = start_idx + self.max_frame * self.jump_step
+        # Retrieve information of target vertices
+        target_verts = all_objs[target_obj]
+        target_cat = target_obj.split('_')[0]
+        target_num = self._cat[target_cat]
+        target_cat = torch.zeros(self.max_cats)
+        target_cat[target_num] = 1
 
-        ret_verts_can = verts_can[start_idx:end_idx:self.jump_step]
-        if self.fix_orientation:
-            ret_verts_can = du.normalize_orientation(ret_verts_can, self.associated_joints, torch.device("cpu"))
-        ret_contacts_s = contacts_s[start_idx:end_idx:self.jump_step]
-
-        # Masking
-        seg_len = ret_verts_can.shape[0]
-        mask = torch.zeros(self.max_frame)
-        mask[:seg_len] = 1
-        ret_verts_can_pad = torch.zeros(self.max_frame - seg_len, *ret_verts_can.shape[1:])
-        ret_verts_can = torch.cat([ret_verts_can, ret_verts_can_pad], dim=0)
-        ret_contacts_s_pad = torch.zeros(self.max_frame - seg_len, *ret_contacts_s.shape[1:])
-        ret_contacts_s = torch.cat([ret_contacts_s, ret_contacts_s_pad], dim=0)
-
-        # Process verts to point clouds
-        ret_verts_can = torch.cat((ret_verts_can[0], ret_verts_can[1]))[:self.pnt_size].unsqueeze(0)
-        given_objs = torch.cat((ret_verts_can, given_objs), dim=0)
-
-        return object_mask, given_objs, given_cats, target_obj, target_cat
+        return obj_mask, obj_verts, obj_cats, target_verts, target_cat, text_prompt
 
 
 if __name__ == "__main__":
     train_dataset = ProxDataset_txt("data/proxd_train", fix_orientation=True, max_frame=220, jump_step=8)
     train_data_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=0)
-    mask, given_objs, given_cats, target_obj, target_cat = next(iter(train_data_loader))
-    print(mask)
-    print(given_objs.shape)
-    print(target_obj.shape)
-    print(given_cats, target_cat)
+    obj_mask, obj_verts, obj_cats, target_verts, target_cat, text_prompt = next(iter(train_data_loader))
+    print(obj_mask)
+    print(obj_verts.shape)
+    print(target_verts.shape)
+    print(obj_cats, target_cat)
+    print(text_prompt)
 
 
     start = time.time()

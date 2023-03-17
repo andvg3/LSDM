@@ -12,6 +12,7 @@ import math
 import numpy as np
 import torch
 import torch as th
+import torch.nn as nn
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat
 from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
@@ -151,6 +152,8 @@ class GaussianDiffusion:
         self.lambda_root_vel = lambda_root_vel
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
+        self.cat_loss = nn.CrossEntropyLoss()
+        self.lambda_cat = 0.0
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
                 self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0.:
@@ -301,7 +304,7 @@ class GaussianDiffusion:
 
         B, C = x.shape[:2]
         assert t.shape == (B,)
-        model_output = model(x, mask, self._scale_timesteps(t), given_objs, given_cats, y)
+        _, model_output = model(x, mask, self._scale_timesteps(t), given_objs, given_cats, y)
 
         # if 'inpainting_mask' in model_kwargs['y'].keys() and 'inpainted_motion' in model_kwargs['y'].keys():
         #     inpainting_mask, inpainted_motion = model_kwargs['y']['inpainting_mask'], model_kwargs['y']['inpainted_motion']
@@ -1247,7 +1250,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, cf, mask, t, given_objs, given_cats, y=None, noise=None):
+    def training_losses(self, model, cf, mask, t, given_objs, given_cats, target_cat, y=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -1285,7 +1288,13 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x_t, mask, self._scale_timesteps(t), given_objs, given_cats, y)
+            out_cat, model_output = model(x_t, mask, self._scale_timesteps(t), given_objs, given_cats, y)
+            
+            # Compute catgorical loss
+            out_cat = out_cat.squeeze(1)
+            target_cat = torch.argmax(target_cat, dim=1)
+            cat_loss = self.cat_loss(out_cat, target_cat)
+            cat_loss *= self.lambda_cat
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,
@@ -1319,9 +1328,9 @@ class GaussianDiffusion:
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat(((target - model_output) ** 2))
             if "vb" in terms:
-                terms["loss"] = terms["mse"] + terms["vb"]
+                terms["loss"] = terms["mse"] + terms["vb"] + cat_loss
             else:
-                terms["loss"] = terms["mse"]
+                terms["loss"] = terms["mse"] + cat_loss
         else:
             raise NotImplementedError(self.loss_type)
 

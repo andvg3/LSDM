@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
+from pytorch3d.loss import chamfer_distance
 
 from posa.posa_utils import count_parameters
 from posa.dataset import ProxDataset_txt
@@ -49,7 +50,7 @@ def train():
     total_train_loss = 0
 
     n_steps = 0
-    for mask, given_objs, given_cats, target_obj, target_cat in tqdm(train_data_loader):
+    for mask, given_objs, given_cats, target_obj, target_cat, y in tqdm(train_data_loader):
         # Initialize params of the training batch
         # verts_can: (bs, seg_len, Nverts, 3), contacts_s: (bs, seg_len, Nverts, 8)
         mask = mask.to(device)
@@ -71,7 +72,8 @@ def train():
             t,  # [bs](int) sampled timesteps
             given_objs,
             given_cats,
-            y=["" for _ in range(target_obj.shape[0])],
+            target_cat,
+            y=y,
         )
         losses = compute_losses()
         loss = (losses["loss"] * weights).mean()
@@ -115,10 +117,11 @@ def validate():
             diffusion.p_sample_loop if not use_ddim else diffusion.ddim_sample_loop
         )
         total_recon_loss_semantics = 0
-        total_semantics_recon_acc = 0
+        total_cfd = 0
+        total_acc = 0
 
         n_steps = 0
-        for mask, given_objs, given_cats, target_obj, target_cat in tqdm(valid_data_loader):
+        for mask, given_objs, given_cats, target_obj, target_cat, y in tqdm(valid_data_loader):
             # verts_can: (bs, seg_len, Nverts, 3), contacts: (bs, seg_len, Nverts, 1), contacts_s: (bs, seg_len, Nverts, 42)
             mask = mask.to(device)
             given_objs = given_objs.to(device)
@@ -132,7 +135,7 @@ def validate():
                 mask,
                 given_objs,
                 given_cats,
-                y=["" for _ in range(target_obj.shape[0])],
+                y=y,
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
@@ -150,23 +153,32 @@ def validate():
             pr_pnts = sample
             gt_pnts = target_obj
             recon_loss_semantics = ((pr_pnts-gt_pnts)**2).mean()
-            semantics_recon_acc = 0.0
+            cfd, cfd_normals = chamfer_distance(pr_pnts, gt_pnts.float().to(device))
+            # Calculate for categorical
+            pred_cat = model.saved_cat
+            pred_cat = pred_cat.squeeze(1)
+            pred_cat = torch.argmax(pred_cat, dim=1)
+            target_cat = torch.argmax(target_cat, dim=1)
+            acc = (pred_cat==target_cat).sum().item() / target_cat.shape[0]
+
             # recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
 
             total_recon_loss_semantics += recon_loss_semantics
-            total_semantics_recon_acc += semantics_recon_acc
+            total_cfd += cfd
+            total_acc += acc
             n_steps += 1
 
         total_recon_loss_semantics /= n_steps
-        total_semantics_recon_acc /= n_steps
+        total_cfd /= n_steps
 
         writer.add_scalar('recon_loss_semantics/validate', total_recon_loss_semantics, e)
-        writer.add_scalar('total_semantics_recon_acc/validate', total_semantics_recon_acc, e)
+        writer.add_scalar('total_cfd/validate', total_cfd, e)
+        writer.add_scalar('total_acc/validate', total_acc, e)
 
         print(
-            '====>Recon_loss_semantics = {:.4f} , Semantics_recon_acc = {:.4f}'.format(
-                total_recon_loss_semantics, total_semantics_recon_acc))
-        return total_recon_loss_semantics, total_semantics_recon_acc
+            '====>Recon_loss_semantics = {:.4f} , Chamfer distance = {:.4f}, Category acc = {:.4f}'.format(
+                total_recon_loss_semantics, total_cfd, total_acc))
+        return total_recon_loss_semantics, total_cfd, total_acc
 
 
 if __name__ == '__main__':
@@ -236,10 +248,10 @@ if __name__ == '__main__':
 
     train_dataset = ProxDataset_txt(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    train_data_loader = DataLoader(train_dataset, batch_size=10, shuffle=True, num_workers=num_workers)
+    train_data_loader = DataLoader(train_dataset, batch_size=20, shuffle=True, num_workers=num_workers)
     valid_dataset = ProxDataset_txt(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=10, shuffle=True, num_workers=num_workers)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=20, shuffle=True, num_workers=num_workers)
 
     # Create model and diffusion object
     model, diffusion = create_model_and_diffusion()
@@ -255,7 +267,7 @@ if __name__ == '__main__':
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma=0.5, verbose=True)
 
     best_valid_loss = float('inf')
-    best_recon_acc = -float('inf')
+    best_cfd= float('inf')
 
     starting_epoch = 0
     if load_ckpt is not None:
@@ -276,7 +288,7 @@ if __name__ == '__main__':
 
         if e % save_interval == save_interval-1:
             start = time.time()
-            total_valid_loss, total_semantics_recon_acc = validate()
+            total_valid_loss, total_cfd, total_acc = validate()
             validation_time = time.time() - start
             print('validation_time = {:.4f}'.format(validation_time))
 
@@ -300,14 +312,14 @@ if __name__ == '__main__':
                 }
                 torch.save(data, osp.join(save_ckpt_dir, 'best_model_valid_loss.pt'))
 
-            if total_semantics_recon_acc > best_recon_acc:
-                print("Updated best model due to new highest semantics_recon_acc. Current epoch: {}".format(e))
-                best_recon_acc = total_semantics_recon_acc
+            if total_cfd < best_cfd:
+                print("Updated best model due to new highest total_cfd. Current epoch: {}".format(e))
+                best_cfd = total_cfd
                 data = {
                     'epoch': e,
                     'model_state_dict': model.state_dict(),
                     'total_train_loss': total_train_loss,
                     'total_valid_loss': total_valid_loss,
-                    'total_semantics_recon_acc': total_semantics_recon_acc
+                    'total_cfd': total_cfd
                 }
-                torch.save(data, osp.join(save_ckpt_dir, 'best_model_recon_acc.pt'))
+                torch.save(data, osp.join(save_ckpt_dir, 'best_model_cfd.pt'))

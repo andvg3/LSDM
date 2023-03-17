@@ -14,8 +14,8 @@ from posa.posa_models import Decoder as POSA_Decoder
 
 class SceneDiffusionModel(nn.Module):
     def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=512, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
-                 d_hid=256, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
-                 data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, **kwargs) -> None:
+                 cat_emb=32, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
+                 data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, max_cats=13, **kwargs) -> None:
         super().__init__()
         self.seg_len = seg_len
         self.pcd_points = pcd_points
@@ -40,22 +40,51 @@ class SceneDiffusionModel(nn.Module):
         self.sequence_pos_encoder = PositionalEncoding(self.latent_dim, self.dropout, device=self.device)
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.sequence_pos_encoder, device=self.device)
 
-        self.attn_layer = MultiheadAttention(embed_dim=clip_dim, num_heads=n_head, kdim=pcd_points*pcd_dim, vdim=pcd_points*pcd_dim, batch_first=True).to(self.device)
-        self.linear_extraction2 = nn.Sequential(
-            nn.Linear(self.seg_len, self.pcd_points),
+        # Setup embedding layer for modality
+        self.saved_cat = None
+        self.embed_text = nn.Sequential(
+            nn.Linear(self.clip_dim, self.latent_dim*2),
+            nn.GELU(),
+            nn.Linear(self.latent_dim*2, self.latent_dim),
             nn.GELU(),
         ).to(self.device)
+
+        # Setup embedding layer for categories
+        self.embed_cat = nn.Sequential(
+            nn.Linear(max_cats, cat_emb),
+            nn.GELU(),
+        ).to(self.device)
+
+        # Setup inference for categorical
+        self.predict_cat = nn.Sequential(
+            nn.Linear(self.latent_dim, max_cats),
+            nn.GELU(),
+            nn.Softmax(dim=2),
+        ).to(self.device)
+        
+        # Setup attention layer
+        self.attn_layer = MultiheadAttention(embed_dim=self.latent_dim, num_heads=n_head, kdim=cat_emb, vdim=pcd_points*pcd_dim, batch_first=True).to(self.device)
 
         # Setup pointcloud backbone for point cloud extraction
         self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
-        self.pcd_extraction = nn.Sequential(
-            nn.Linear(self.pcd_dim, self.latent_dim),
-            nn.GELU(),
-        ).to(self.device)
+        # self.pcd_extraction = nn.Sequential(
+        #     nn.Linear(self.pcd_dim, self.latent_dim*2),
+        #     nn.GELU(),
+        #     nn.Linear(self.latent_dim*2, self.latent_dim),
+        #     nn.GELU(),
+        # ).to(self.device)
 
         # Setup combination layers for extracted information
+        # self.combine_extraction = nn.Sequential(
+        #     nn.Linear(self.latent_dim*2 + pcd_dim, self.latent_dim + pcd_dim),
+        #     nn.GELU(),
+        #     nn.Linear(self.latent_dim + pcd_dim, self.extract_dim),
+        #     nn.GELU(),
+        # ).to(self.device)
         self.combine_extraction = nn.Sequential(
-            nn.Linear(self.latent_dim * 2 + pcd_dim, self.extract_dim),
+            # nn.Linear(self.latent_dim*2, self.latent_dim*1.5),
+            # nn.GELU(),
+            nn.Linear(self.latent_dim*2, self.extract_dim),
             nn.GELU(),
         ).to(self.device)
 
@@ -79,7 +108,17 @@ class SceneDiffusionModel(nn.Module):
         if self.modality == 'text':
             enc_text = self._encode_text(y)
             emb_mod = self.embed_text(self._mask_cond(enc_text, force_mask=force_mask))
+            # Pass through linear layer of text
+            enc_text = enc_text.unsqueeze(1)
+            enc_text = self.embed_text(enc_text)
             emb_mod = emb_mod.unsqueeze(0).permute(1, 0, 2)
+
+        # Predict output categorical
+        out_cat = self.predict_cat(enc_text)
+        self.saved_cat = out_cat
+
+        # Embed information from categories
+        emb_cat = self.embed_cat(given_cats)
         
         # Combine features from timestep and modality
         emb = torch.cat((emb_ts, emb_mod), dim=-1)
@@ -92,22 +131,22 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out.reshape(bs, num_obj, -1)
 
         # Pass through attention layer to attain attention matrix
-        enc_text = enc_text.unsqueeze(1)
         mask = mask.unsqueeze(1)
         mask = mask.repeat(self.n_head, 1, 1)
-        attn_output, attn_output_weights = self.attn_layer(enc_text, pcd_out, pcd_out, attn_mask=mask)
+        attn_output, attn_output_weights = self.attn_layer(enc_text, emb_cat, pcd_out, attn_mask=mask)
         pcd_out = pcd_out.permute(0, 2, 1)
         pcd_out = pcd_out * attn_output_weights
         pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1).mean(dim=1)
+        x += pcd_out
 
         # Final embedding features
-        emb = torch.cat((emb, pcd_out), dim=-1)
+        # emb = torch.cat((emb, pcd_out), dim=-1)
         emb = self.combine_extraction(emb)
 
         # Reconstruct features
         x = self.input_process(x, emb)
         x = self.output_process(x)
-        return x
+        return out_cat, x
 
     def _set_up_modality(self):
         assert self.modality in ['text', 'audio', None]

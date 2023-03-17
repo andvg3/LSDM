@@ -9,10 +9,12 @@ from pytorch3d.loss import chamfer_distance
 from random import randrange
 from tqdm import tqdm
 import sklearn.cluster
+from torch.utils.data import DataLoader
 
 import posa.vis_utils as vis_utils
 import posa.general_utils as general_utils
 import posa.data_utils as du
+from posa.dataset import ProxDataset_txt
 
 from util.model_util import create_model_and_diffusion
 
@@ -26,65 +28,6 @@ def list_mean(list):
     for item in list:
         acc += item
     return acc / len(list)
-
-def _setup_static_objs(objs_dir, cases_dir):
-        _cat = {
-            "chair": 0,
-            "table": 1,
-            "cabinet": 2,
-            "sofa": 3,
-            "bed": 4,
-            "chest_of_drawers": 5,
-            "chest": 5,
-            "stool": 6,
-            "tv_monitor": 7,
-            "tv": 7,
-            "lighting": 8,
-            "shelving": 9,
-            "seating": 10,
-            "furniture": 11,
-        }
-        scenes = os.listdir(objs_dir)
-        max_objs = 8
-        objs = dict()
-        cats = dict()
-        masks = dict()
-        handle = 2
-        pnt_size = 1024
-        for scene in scenes:
-            objs[scene] = dict()
-            cats[scene] = [-1 for _ in range(max_objs)]
-            masks[scene] = torch.ones(max_objs+1)
-            case_path = os.path.join(cases_dir, scene)
-            case_fn = os.path.join(case_path, 'case_{}.txt'.format(handle))
-
-            with open(case_fn, 'r') as f:
-                given_objs, target_obj = f.readlines()
-                given_objs = given_objs.strip('\n').split(' ')
-            
-            # Read given objects
-            first_idx = len(given_objs)
-            for i in range(first_idx, max_objs+1):
-                masks[scene][i] = 0
-            given_objs_tensor = torch.zeros(max_objs, pnt_size, 3)
-            for idx, given_obj in enumerate(given_objs):
-                given_cat = given_obj.split('_')[0]
-                cats[scene][idx] = _cat[given_cat]
-                given_obj_fn = os.path.join(objs_dir, scene, given_obj + '.npy')
-                with open(given_obj_fn, 'rb') as f:
-                    given_obj_verts = torch.from_numpy(np.load(f))
-                    given_objs_tensor[idx] = given_obj_verts
-
-            # Read target object
-            target_cat = target_obj.split('_')[0]
-            target_obj_fn = os.path.join(objs_dir, scene, target_obj + '.npy')
-            with open(target_obj_fn, 'rb') as f:
-                target_obj_verts = torch.from_numpy(np.load(f))
-        
-            objs[scene] = (given_objs_tensor, target_obj_verts)
-            cats[scene] = torch.tensor(cats[scene]), torch.tensor([_cat[target_cat]])
-        return objs, cats, masks
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
@@ -165,71 +108,30 @@ if __name__ == '__main__':
     associated_joints = torch.argmax(ds_weights, dim=1)
     torch.manual_seed(seed)
 
-
-    seq_name_list = []
-    chamfer_list = []
-    seq_class_acc = [[] for _ in range(num_obj_classes)]
-
-    vertices_dir = os.path.join(data_dir, "vertices")
-    contacts_s_dir = os.path.join(data_dir, "semantics")
-    vertices_can_dir = os.path.join(data_dir, "vertices_can")
-    pre_data_dir = data_dir.split('/')[0]
-    objs_dir = os.path.join(pre_data_dir, "objs")
-    cases_dir = os.path.join(pre_data_dir, "cases")
-    objs, cats, masks = _setup_static_objs(objs_dir, cases_dir)
-
-    if do_valid or do_train:
-        vertices_file_list = os.listdir(vertices_dir)
-        seq_name_list = [file_name.split('_verts')[0] for file_name in vertices_file_list]
-    else:
-        seq_name_list = [single_seq_name]
-
-    # Load in model checkpoints and set up data stream
+    valid_dataset = ProxDataset_txt(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                   step_multiplier=1, jump_step=jump_step)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
     model, diffusion = create_model_and_diffusion()
     model.eval()
     checkpoint = torch.load(ckpt_path)
     model.load_state_dict(checkpoint['model_state_dict'])
 
-    for seq_name in seq_name_list:
-        if save_video or visualize:
-            save_seq_dir = os.path.join(output_dir, seq_name)
-            os.makedirs(save_seq_dir, exist_ok=True)
-            save_seq_model_dir = os.path.join(save_seq_dir, model_name)
-            os.makedirs(save_seq_model_dir, exist_ok=True)
-            output_image_dir = os.path.join(save_seq_model_dir, cam_path.split("/")[-1])
-            os.makedirs(output_image_dir, exist_ok=True)
-        print("Test scene: {}".format(seq_name))
-
-        scene = seq_name.split('_')[0]
-        given_objs, target_obj = objs[scene]
-        given_cats, target_cat = cats[scene]
-        mask = masks[scene]
-        given_objs =  given_objs.unsqueeze(0).to(device)
-        target_obj = target_obj.unsqueeze(0).to(device)
-        given_cats = given_cats.unsqueeze(0).to(device)
-        target_cat = target_cat.unsqueeze(0).to(device)
-        verts = torch.tensor(np.load(os.path.join(vertices_dir, seq_name + "_verts.npy"))).to(device)
-        verts_can = torch.tensor(np.load(os.path.join(vertices_can_dir, seq_name + "_verts_can.npy"))).to(device)
-        contacts_s = torch.tensor(np.load(os.path.join(contacts_s_dir, seq_name + "_cfs.npy"))).to(device)
-        ret_verts_can = torch.cat((verts_can[0], verts_can[1]))[:pnt_size].unsqueeze(0).unsqueeze(0)
-        given_objs = torch.cat((ret_verts_can, given_objs), dim=1)
-
-
-        if save_video:
-            visualizer = o3d.visualization.Visualizer()
-            visualizer.create_window()
-
-        if visualize or save_video:
-            scene_name = seq_name.split("_")[0]
-            test_scene_mesh_path = "{}/{}.ply".format(scene_dir, scene_name)
-            scene = o3d.io.read_triangle_mesh(test_scene_mesh_path)
-            down_sample_level = 2
-            # tpose for getting face_arr
-            tpose_mesh_path = os.path.join(tpose_mesh_dir, "mesh_{}.obj".format(down_sample_level))
-            faces_arr = trimesh.load(tpose_mesh_path, process=False).faces
-
+    seq_name_list = []
+    chamfer_list = []
+    seq_class_acc = [[] for _ in range(num_obj_classes)]
+    
+    counter = 0
+    f = open(os.path.join(output_dir, "results.txt"), "w+")
+    for mask, given_objs, given_cats, target_obj, target_cat, y in tqdm(valid_data_loader):
         # Loop over video frames to get predictions
         # Metrics for semantic labels
+        # Switch to cuda
+        mask = mask.to(device)
+        given_objs = given_objs.to(device)
+        given_cats = given_cats.to(device)
+        target_obj = target_obj.to(device)
+        target_cat = target_cat.to(device)
+
         chamfer_s = 0
         class_acc_list = [[] for _ in range(num_obj_classes)]
         class_acc = dict()
@@ -238,8 +140,6 @@ if __name__ == '__main__':
         sample_fn = (
             diffusion.p_sample_loop if not use_ddim else diffusion.ddim_sample_loop
         )
-
-        mask = mask.unsqueeze(0).to(device)
         target_obj_shape = list(target_obj.shape)
 
         with torch.no_grad():
@@ -249,7 +149,7 @@ if __name__ == '__main__':
                 mask,
                 given_objs,
                 given_cats,
-                y=["" for _ in range(target_obj_shape[0])],
+                y=y,
                 clip_denoised=clip_denoised,
                 model_kwargs=None,
                 skip_timesteps=0,  # 0 is the default value - i.e. don't skip any step
@@ -266,8 +166,8 @@ if __name__ == '__main__':
         chamfer_s += loss
         chamfer_list.append(chamfer_s)
         # visualizer.destroy_window()
-        with open(os.path.join(output_dir, "results.txt"), "a+") as f:
-            f.write("Chamfer distance for seq {}: {:.4f}".format(seq_name, chamfer_s) + '\n')
+        f.write("Chamfer distance for seq {}: {:.4f}".format(counter, chamfer_s) + '\n')
+        counter += 1
 
-    with open(os.path.join(output_dir, "results.txt"), "a+") as f:
-        f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
+    f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
+    f.close()

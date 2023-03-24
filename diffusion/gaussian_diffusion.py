@@ -153,7 +153,7 @@ class GaussianDiffusion:
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
         self.cat_loss = nn.CrossEntropyLoss()
-        self.lambda_cat = 0
+        self.lambda_cat = 0.1
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
                 self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0.:

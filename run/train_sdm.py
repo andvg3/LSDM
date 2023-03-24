@@ -248,10 +248,10 @@ if __name__ == '__main__':
 
     train_dataset = ProxDataset_txt(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    train_data_loader = DataLoader(train_dataset, batch_size=20, shuffle=True, num_workers=num_workers)
+    train_data_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=num_workers)
     valid_dataset = ProxDataset_txt(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=20, shuffle=True, num_workers=num_workers)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=8, shuffle=True, num_workers=num_workers)
 
     # Create model and diffusion object
     model, diffusion = create_model_and_diffusion()

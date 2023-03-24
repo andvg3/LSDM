@@ -15,7 +15,8 @@ from posa.posa_models import Decoder as POSA_Decoder
 class SceneDiffusionModel(nn.Module):
     def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=512, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
                  cat_emb=32, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
-                 data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, max_cats=13, **kwargs) -> None:
+                 data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, max_cats=13, translation_params=12,
+                 **kwargs) -> None:
         super().__init__()
         self.seg_len = seg_len
         self.pcd_points = pcd_points
@@ -30,6 +31,7 @@ class SceneDiffusionModel(nn.Module):
         self.data_rep = data_rep
         self.input_feats = vert_dims * obj_cat
         self.n_head = n_head
+        self.translation_params = translation_params
         self.device = "cuda:{}".format(device) if use_cuda else "cpu"
 
         # Setup modality for the model, e.g., text.
@@ -64,9 +66,23 @@ class SceneDiffusionModel(nn.Module):
         
         # Setup attention layer
         self.attn_layer = MultiheadAttention(embed_dim=self.latent_dim, num_heads=n_head, kdim=cat_emb, vdim=pcd_points*pcd_dim, batch_first=True).to(self.device)
+        
+        # Setup translation layer
+        self.translation_layer = nn.Sequential(
+            nn.Linear(self.latent_dim + cat_emb, self.latent_dim),
+            nn.GELU(),
+            nn.Linear(self.latent_dim, self.translation_params),
+            nn.GELU(),
+        ).to(self.device)
+        self.point_wise_trans_layer = nn.Sequential(
+            nn.Linear(self.translation_params + self.xyz_dim, self.xyz_dim),
+            nn.GELU(),
+        ).to(self.device)
 
         # Setup pointcloud backbone for point cloud extraction
+        self.pcd_attention = MultiheadAttention(embed_dim=self.translation_params, num_heads=self.translation_params, kdim=self.xyz_dim, vdim=self.xyz_dim, batch_first=True).to(self.device)
         self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
+        # self.pcd_attention = MultiheadAttention(embed_dim=self.latent_dim)
 
         # Setup combination layers for extracted information
         self.upsampling_layer = nn.Sequential(
@@ -132,9 +148,22 @@ class SceneDiffusionModel(nn.Module):
         mask = mask.unsqueeze(1)
         mask = mask.repeat(self.n_head, 1, 1)
         attn_output, attn_output_weights = self.attn_layer(enc_text, emb_cat, pcd_out, attn_mask=mask)
+        
+        # Pass through translation layer
+        enc_text = enc_text.repeat(1, num_obj, 1)
+        emb_cat = torch.cat((emb_cat, enc_text), dim=-1)
+        translation_output = self.translation_layer(emb_cat).unsqueeze(-2).repeat(1, 1, self.pcd_points, 1)
+        translation_output = translation_output.view(-1, self.pcd_points, self.translation_params)
+
+        # Pass through point cloud backbone and retrieve spatial relation
         pcd_out = pcd_out.permute(0, 2, 1)
         pcd_out = pcd_out * attn_output_weights
-        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1).mean(dim=1)
+        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
+        pcd_trans = pcd_out.view(-1, self.pcd_points, self.xyz_dim)
+        pcd_trans, _ = self.pcd_attention(translation_output, pcd_trans, pcd_trans)
+        pcd_trans = pcd_trans.view(bs, num_obj, num_points, -1)
+        pcd_out = torch.cat((pcd_out, pcd_trans), dim=-1)
+        pcd_out = self.point_wise_trans_layer(pcd_out).sum(dim=1)
         x += pcd_out
 
         # Final embedding features

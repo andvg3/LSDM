@@ -49,6 +49,7 @@ def get_default_diffusion():
         "lambda_fc": 0.0,
         "lambda_rcxyz": 0.0,
         "lambda_vel": 0.0,
+        "lambda_cat": 0.05,
         "noise_schedule": "cosine",
         "sigma_small": True,
     }
@@ -74,6 +75,7 @@ def get_model_args():
         "lambda_fc": 0.0,
         "lambda_rcxyz": 0.0,
         "lambda_vel": 0.0,
+        "lambda_cat": 0.05,
         "latent_dim": 512,
         "layers": 8,
         "log_interval": 1000,
@@ -128,6 +130,7 @@ def create_gaussian_diffusion(args):
         lambda_vel=args['lambda_vel'],
         lambda_rcxyz=args['lambda_rcxyz'],
         lambda_fc=args['lambda_fc'],
+        lambda_cat=args['lambda_cat']
     )
 
 def get_training_platform():

@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import torch as th
 import torch.nn as nn
+from pytorch3d.loss import chamfer_distance
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat
 from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
@@ -134,6 +135,7 @@ class GaussianDiffusion:
         lambda_root_vel=0.,
         lambda_vel_rcxyz=0.,
         lambda_fc=0.,
+        lambda_cat=0.05,
     ):
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
@@ -153,7 +155,7 @@ class GaussianDiffusion:
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
         self.cat_loss = nn.CrossEntropyLoss()
-        self.lambda_cat = 0.1
+        self.lambda_cat = lambda_cat
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
                 self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0.:
@@ -1295,6 +1297,7 @@ class GaussianDiffusion:
             target_cat = torch.argmax(target_cat, dim=1)
             cat_loss = self.cat_loss(out_cat, target_cat)
             cat_loss *= self.lambda_cat
+            terms["cat_loss"] = cat_loss
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,
@@ -1326,9 +1329,10 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
-            terms["mse"] = mean_flat(((target - model_output) ** 2))
+            # terms["mse"] = mean_flat(((target - model_output) ** 2))
+            terms["mse"], _ = chamfer_distance(model_output.float(), target.float())
             if "vb" in terms:
-                terms["loss"] = terms["mse"] + terms["vb"] + cat_loss
+                terms["loss"] = terms["mse"] + terms["vb"] + terms["cat_loss"]
             else:
                 terms["loss"] = terms["mse"] + cat_loss
         else:

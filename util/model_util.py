@@ -49,7 +49,7 @@ def get_default_diffusion():
         "lambda_fc": 0.0,
         "lambda_rcxyz": 0.0,
         "lambda_vel": 0.0,
-        "lambda_cat": 0.05,
+        "lambda_cat": 0.1,
         "noise_schedule": "cosine",
         "sigma_small": True,
     }

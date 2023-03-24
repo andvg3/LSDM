@@ -116,11 +116,21 @@ if __name__ == '__main__':
     checkpoint = torch.load(ckpt_path)
     model.load_state_dict(checkpoint['model_state_dict'])
 
+    # Setup names for output files
+    context_dir = os.path.join(data_dir, 'context')
+    files = os.listdir(context_dir)
+    lookup_tab = dict()
+    for file in files:
+        reduced_file = file.split('.')[0]
+
+        with open(os.path.join(context_dir, file), 'r') as f:
+            prompt = f.readlines()[0].strip()
+            lookup_tab[prompt] = reduced_file
+    
     seq_name_list = []
     chamfer_list = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
     
-    counter = 0
     f = open(os.path.join(output_dir, "results.txt"), "w+")
     for mask, given_objs, given_cats, target_obj, target_cat, y in tqdm(valid_data_loader):
         # Loop over video frames to get predictions
@@ -166,8 +176,8 @@ if __name__ == '__main__':
         chamfer_s += loss
         chamfer_list.append(chamfer_s)
         # visualizer.destroy_window()
-        f.write("Chamfer distance for seq {}: {:.4f}".format(counter, chamfer_s) + '\n')
-        counter += 1
+        out_file = lookup_tab[y[0]]
+        f.write("Chamfer distance for seq {}: {:.4f}".format(out_file, chamfer_s) + '\n')
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.close()

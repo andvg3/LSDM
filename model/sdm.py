@@ -126,7 +126,7 @@ class SceneDiffusionModel(nn.Module):
             enc_text = enc_text.unsqueeze(1)
 
         # Predict output categorical
-        out_cat = self.predict_cat(enc_text)
+        out_cat = self.predict_cat(enc_text.clone().detach())
         self.saved_cat = out_cat
 
         # Embed information from categories
@@ -145,9 +145,9 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out.reshape(bs, num_obj, -1)
 
         # Pass through attention layer to attain attention matrix
-        mask = mask.unsqueeze(1)
-        mask = mask.repeat(self.n_head, 1, 1)
-        attn_output, attn_output_weights = self.attn_layer(enc_text, emb_cat, pcd_out, attn_mask=mask)
+        attn_mask = mask.unsqueeze(1).clone().detach()
+        attn_mask = attn_mask.repeat(self.n_head, 1, 1)
+        attn_output, attn_output_weights = self.attn_layer(enc_text, emb_cat, pcd_out, attn_mask=attn_mask)
         
         # Pass through translation layer
         enc_text = enc_text.repeat(1, num_obj, 1)
@@ -163,8 +163,11 @@ class SceneDiffusionModel(nn.Module):
         pcd_trans, _ = self.pcd_attention(translation_output, pcd_trans, pcd_trans)
         pcd_trans = pcd_trans.view(bs, num_obj, num_points, -1)
         pcd_out = torch.cat((pcd_out, pcd_trans), dim=-1)
-        pcd_out = self.point_wise_trans_layer(pcd_out).sum(dim=1)
-        x += pcd_out
+        pcd_out = self.point_wise_trans_layer(pcd_out)
+        pcd_out = pcd_out.reshape(num_points, -1, bs, num_obj)
+        pcd_out = pcd_out * mask
+        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1).sum(dim=1)
+        x = (x + pcd_out)/2
 
         # Final embedding features
         # emb = torch.cat((emb, pcd_out), dim=-1)

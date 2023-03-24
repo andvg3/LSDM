@@ -13,7 +13,6 @@ from util.model_util import create_model_and_diffusion
 # Example usage
 # python predict_contact.py ../data/amass --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir ../results/amass
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("data_dir", type=str,
@@ -68,11 +67,22 @@ if __name__ == '__main__':
     seq_name_list = sorted(os.listdir(os.path.join(data_dir, 'context')))
     use_ddim = False  # FIXME - hardcoded
     clip_denoised = False  # FIXME - hardcoded
+    
+    # Setup names for output files
+    context_dir = os.path.join(data_dir, 'context')
+    files = os.listdir(context_dir)
+    up_tab = dict()
+    for file in files:look
+        reduced_file = file.split('.')[0]
 
+        with open(os.path.join(context_dir, file), 'r') as f:
+            prompt = f.readlines()[0].strip()
+            lookup_tab[prompt] = reduced_file
+    
     # Load in model checkpoints and set up data stream
     valid_dataset = ProxDataset_txt(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                    step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=0)
+    valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
     
     model, diffusion = create_model_and_diffusion()
     model.eval()
@@ -91,7 +101,7 @@ if __name__ == '__main__':
         given_cats = given_cats.to(device)
         target_obj = target_obj.to(device)
         target_cat = target_cat.to(device)
-
+        out_file = lookup_tab[y[0]]
         with torch.no_grad():
             sample = sample_fn(
                 model,
@@ -113,10 +123,9 @@ if __name__ == '__main__':
             pr_cf = sample
 
         pred = pr_cf
-        print(y)
         # pred = pred[:(int)(mask.sum())]
 
-        cur_output_path = os.path.join(output_dir, "test.npy")
+        cur_output_path = os.path.join(output_dir, "{}.npy".format(out_file))
         np.save(cur_output_path, pred.cpu().numpy())
         idx += 1
         # if save_probability:

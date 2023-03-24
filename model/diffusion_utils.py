@@ -49,10 +49,17 @@ class InputProcess(nn.Module):
         self.input_feats = input_feats
         self.extract_dim = extract_dim
         self.pose_embedding = nn.Sequential(
-            nn.Linear(self.input_feats, self.extract_dim),
-            nn.GELU(),
+            nn.Linear(self.input_feats, self.extract_dim//2),
+            nn.Sigmoid(),
+            nn.Linear(self.extract_dim//2, self.extract_dim),
+            nn.Sigmoid(),
         )
-        self.combination_extraction = nn.Linear(2 * self.extract_dim, self.extract_dim)
+        self.combination_extraction = nn.Sequential(
+            nn.Linear(self.extract_dim*2, int(self.extract_dim*1.5)),
+            nn.Sigmoid(),
+            nn.Linear(int(self.extract_dim*1.5), self.extract_dim),
+            nn.Sigmoid(),
+        )
         if self.data_rep == 'rot_vel':
             self.vel_embedding = nn.Linear(self.input_feats, self.extract_dim)
 
@@ -88,7 +95,12 @@ class OutputProcess(nn.Module):
         self.input_feats = input_feats
         self.extract_dim = extract_dim
         self.pcd_points = pcd_points
-        self.pose_final = nn.Linear(self.extract_dim, self.input_feats)
+        self.pose_final = nn.Sequential(
+            nn.Linear(self.extract_dim, self.extract_dim//2),
+            nn.GELU(),
+            nn.Linear(self.extract_dim//2, self.input_feats),
+            nn.GELU(),
+        )
         if self.data_rep == 'rot_vel':
             self.vel_final = nn.Linear(self.extract_dim, self.input_feats)
 

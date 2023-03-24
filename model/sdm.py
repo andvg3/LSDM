@@ -67,20 +67,17 @@ class SceneDiffusionModel(nn.Module):
 
         # Setup pointcloud backbone for point cloud extraction
         self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
-        # self.pcd_extraction = nn.Sequential(
-        #     nn.Linear(self.pcd_dim, self.latent_dim*2),
-        #     nn.GELU(),
-        #     nn.Linear(self.latent_dim*2, self.latent_dim),
-        #     nn.GELU(),
-        # ).to(self.device)
 
         # Setup combination layers for extracted information
-        # self.combine_extraction = nn.Sequential(
-        #     nn.Linear(self.latent_dim*2 + pcd_dim, self.latent_dim + pcd_dim),
-        #     nn.GELU(),
-        #     nn.Linear(self.latent_dim + pcd_dim, self.extract_dim),
-        #     nn.GELU(),
-        # ).to(self.device)
+        self.upsampling_layer = nn.Sequential(
+            nn.Linear(1, 128),
+            nn.GELU(),
+            nn.Linear(128, 512),
+            nn.GELU(),
+            nn.Linear(512, self.pcd_points),
+            nn.GELU(),
+        ).to(self.device)
+
         self.combine_extraction = nn.Sequential(
             # nn.Linear(self.latent_dim*2, self.latent_dim*1.5),
             # nn.GELU(),
@@ -107,11 +104,10 @@ class SceneDiffusionModel(nn.Module):
         # Embed features from modality
         if self.modality == 'text':
             enc_text = self._encode_text(y)
-            emb_mod = self.embed_text(self._mask_cond(enc_text, force_mask=force_mask))
             # Pass through linear layer of text
-            enc_text = enc_text.unsqueeze(1)
             enc_text = self.embed_text(enc_text)
-            emb_mod = emb_mod.unsqueeze(0).permute(1, 0, 2)
+            # enc_text = self.embed_text(self._mask_cond(enc_text, force_mask=force_mask))
+            enc_text = enc_text.unsqueeze(1)
 
         # Predict output categorical
         out_cat = self.predict_cat(enc_text)
@@ -121,8 +117,10 @@ class SceneDiffusionModel(nn.Module):
         emb_cat = self.embed_cat(given_cats)
         
         # Combine features from timestep and modality
-        emb = torch.cat((emb_ts, emb_mod), dim=-1)
-        emb = emb.repeat(1, self.pcd_points, 1)
+        emb = torch.cat((emb_ts, enc_text), dim=-1)
+        emb = emb.permute(0, 2, 1)
+        emb = self.upsampling_layer(emb)
+        emb = emb.permute(0, 2, 1)
 
         # Embed point clouds feature
         bs, num_obj, num_points, pcd_dim = given_objs.shape
@@ -151,7 +149,12 @@ class SceneDiffusionModel(nn.Module):
     def _set_up_modality(self):
         assert self.modality in ['text', 'audio', None]
         if self.modality == 'text':
-            self.embed_text = nn.Linear(self.clip_dim, self.latent_dim).to(self.device)
+            self.embed_text = nn.Sequential(
+                nn.Linear(self.clip_dim, self.clip_dim//2),
+                nn.GELU(),
+                nn.Linear(self.clip_dim//2, self.latent_dim),
+                nn.GELU()
+            ).to(self.device)
             self.clip_version = self.clip_version
             self.clip_model = self._load_and_freeze_clip(self.clip_version, device=self.device)
     
@@ -174,7 +177,6 @@ class SceneDiffusionModel(nn.Module):
             context_length = max_text_len + 2 # start_token + 20 + end_token
             assert context_length < default_context_length
             texts = clip.tokenize(raw_text, context_length=context_length, truncate=True).to(device) # [bs, context_length] # if n_tokens > context_length -> will truncate
-            # print('texts', texts.shape)
             zero_pad = torch.zeros([texts.shape[0], default_context_length-context_length], dtype=texts.dtype, device=texts.device)
             texts = torch.cat([texts, zero_pad], dim=1)
             # print('texts after pad', texts.shape, texts)

@@ -45,7 +45,9 @@ class SceneDiffusionModel(nn.Module):
         # Setup embedding layer for modality
         self.saved_cat = None
         self.embed_text = nn.Sequential(
-            nn.Linear(self.clip_dim, self.latent_dim*2),
+            nn.Linear(self.clip_dim, self.clip_dim//2),
+            nn.GELU(),
+            nn.Linear(self.clip_dim//2, self.latent_dim*2),
             nn.GELU(),
             nn.Linear(self.latent_dim*2, self.latent_dim),
             nn.GELU(),
@@ -59,7 +61,11 @@ class SceneDiffusionModel(nn.Module):
 
         # Setup inference for categorical
         self.predict_cat = nn.Sequential(
-            nn.Linear(self.latent_dim, max_cats),
+            nn.Linear(self.latent_dim, self.latent_dim//2),
+            nn.GELU(),
+            nn.Linear(self.latent_dim//2, self.latent_dim//4),
+            nn.GELU(),
+            nn.Linear(self.latent_dim//4, max_cats),
             nn.GELU(),
             nn.Softmax(dim=2),
         ).to(self.device)

@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
 from pytorch3d.loss import chamfer_distance
 from copy import deepcopy
 from diffusion.nn import mean_flat, sum_flat

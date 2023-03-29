@@ -152,7 +152,7 @@ class GraphLin_block(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         if self.normalization_mode is not None:
-            x = self.norm(x.permute(0, 3, 2, 1)).permute(0, 3, 2, 1)
+            x = self.norm(x.permute(0, 2, 1)).permute(0, 2, 1)
         if self.non_lin:
             x = self.relu(x)
         if self.drop_out:
@@ -181,7 +181,7 @@ class Spiral_block(nn.Module):
     def forward(self, x):
         x = self.conv(x)
         if self.normalization_mode is not None:
-            x = self.norm(x.permute(0, 3, 2, 1)).permute(0, 3, 2, 1)
+            x = self.norm(x.permute(0, 2, 1)).permute(0, 2, 1)
         if self.non_lin:
             x = self.relu(x)
         return x
@@ -290,11 +290,12 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, input_feats, z_dim=256, num_hidden_layers=1, channels=64, ds_us_dir='./mesh_ds',
-                 normalization_mode='group_norm', num_groups=8, seq_length=9, no_obj_classes=8,
+    def __init__(self, input_feats, z_dim=128, pcd_points=1024, num_hidden_layers=1, channels=64, ds_us_dir='./mesh_ds',
+                 normalization_mode='group_norm', num_groups=8, seq_length=1, no_obj_classes=3,
                  use_cuda=True, **kwargs):
         super(Decoder, self).__init__()
         self.f_dim = no_obj_classes
+        self.pcd_points = pcd_points
         self.spiral_indices = []
         self.nv = []
         levels = [0, 1, 2]
@@ -314,9 +315,14 @@ class Decoder(nn.Module):
                              num_groups))
         self.de_spiral.append(SpiralConv(self.channels[0], self.f_dim, self.spiral_indices[0]))
         self.de_spiral = nn.Sequential(*self.de_spiral)
+        self.upsampling = nn.Upsample(scale_factor=2, mode='nearest')
 
     def forward(self, vertices):
         x = self.de_spiral(vertices)
+        x = x.permute(0, 2, 1)
+        x = self.upsampling(x)
+        x = x.permute(0, 2, 1)
+        x = x[:,:self.pcd_points]
         return x
 
 

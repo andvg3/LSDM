@@ -456,7 +456,6 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         obj_verts = torch.zeros(self.max_objs+1, self.pnt_size, 3)
         obj_verts[0] = human_verts.clone().detach()
         obj_mask = torch.zeros(self.max_objs+1)
-        obj_mask[0] = 1
         obj_cats = torch.zeros(self.max_objs+1, self.max_cats)
         obj_cats[0][self._cat['human']] = 1
         for idx, obj in enumerate(given_objs):

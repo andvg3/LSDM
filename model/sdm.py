@@ -24,6 +24,7 @@ class SceneDiffusionModel(nn.Module):
         self.clip_dim = clip_dim
         self.latent_dim = latent_dim
         self.pcd_dim = pcd_dim
+        self.pcd_points = pcd_points
         self.xyz_dim = xyz_dim
         self.extract_dim = self.latent_dim
         self.dropout = dropout
@@ -88,6 +89,7 @@ class SceneDiffusionModel(nn.Module):
         # Setup pointcloud backbone for point cloud extraction
         self.pcd_attention = MultiheadAttention(embed_dim=self.translation_params, num_heads=self.translation_params, kdim=self.xyz_dim, vdim=self.xyz_dim, batch_first=True).to(self.device)
         self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
+        self.human_backbone = POSA_Decoder(input_feats=xyz_dim, pcd_dim=self.pcd_points).to(self.device)
         # self.pcd_attention = MultiheadAttention(embed_dim=self.latent_dim)
 
         # Setup combination layers for extracted information
@@ -146,7 +148,11 @@ class SceneDiffusionModel(nn.Module):
 
         # Embed point clouds feature
         bs, num_obj, num_points, pcd_dim = given_objs.shape
+
+        # Get human pose features
+        hm_in = given_objs[:,0].clone().detach()
         given_objs = given_objs.view(bs * num_obj, num_points, pcd_dim)
+        hm_out = self.human_backbone(hm_in)
         pcd_out = self.pcd_backbone(given_objs)
         pcd_out = pcd_out.reshape(bs, num_obj, -1)
 
@@ -172,8 +178,10 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = self.point_wise_trans_layer(pcd_out)
         pcd_out = pcd_out.reshape(num_points, -1, bs, num_obj)
         pcd_out = pcd_out * mask
-        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1).sum(dim=1)
-        x = (x + pcd_out)/2
+        pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
+        pcd_out = pcd_out.sum(dim=1)
+        pcd_out = (pcd_out + hm_out)/2
+        x += pcd_out
 
         # Final embedding features
         # emb = torch.cat((emb, pcd_out), dim=-1)

@@ -13,14 +13,17 @@ def load_model_wo_clip(model, state_dict):
     assert all([k.startswith('clip_model.') for k in missing_keys])
 
 
-def create_model_and_diffusion():
+def create_model_and_diffusion(datatype):
     # model = SceneDiffusionModel(**get_model_args(args, data))
-    model = SceneDiffusionModel(**get_default_model())
+    if datatype == "proxd":
+        model = SceneDiffusionModel(**get_default_model_proxd())
+    else:
+        model = SceneDiffusionModel(**get_default_model_humanise())
     diffusion = create_gaussian_diffusion(get_default_diffusion())
     return model, diffusion
 
 
-def get_default_model():
+def get_default_model_proxd():
     return {
         'seq_len': 256, 
         'modality': 'text',
@@ -43,6 +46,32 @@ def get_default_model():
         'data_rep': 'rot6d', 
         'njoints': 251,
     }
+
+def get_default_model_humanise():
+    return {
+        'seq_len': 256, 
+        'modality': 'text',
+        'clip_version': 'ViT-B/32', 
+        'clip_dim': 512, 
+        'dropout': 0.1, 
+        'n_layer': 6, 
+        'n_head': 8, 
+        'f_vert': 64, 
+        'dim_ff': 512,
+        'd_hid': 256, 
+        'mesh_ds_dir': "data/mesh_ds", 
+        'posa_path': None, 
+        'latent_dim': 128,
+        'pcd_dim': 3,
+        'cond_mask_prob': 1.0, 
+        'device': 0, 
+        'vert_dims': 655, 
+        'obj_cat': 3, 
+        'data_rep': 'rot6d', 
+        'njoints': 251,
+        'max_cats': 8,
+    }
+
 
 def get_default_diffusion():
     args = {

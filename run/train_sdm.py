@@ -15,7 +15,7 @@ from torch.optim import AdamW
 from pytorch3d.loss import chamfer_distance
 
 from posa.posa_utils import count_parameters
-from posa.dataset import ProxDataset_txt
+from posa.dataset import ProxDataset_txt, HUMANISE
 from posa.general_utils import compute_recon_loss, compute_delta
 
 from diffusion.resample import create_named_schedule_sampler
@@ -172,7 +172,6 @@ def validate():
         total_cfd /= n_steps
         total_acc /= n_steps
         print(n_steps)
-        raise
 
         writer.add_scalar('recon_loss_semantics/validate', total_recon_loss_semantics, e)
         writer.add_scalar('total_cfd/validate', total_cfd, e)
@@ -216,6 +215,7 @@ if __name__ == '__main__':
     parser.add_argument("--jump_step", type=int, default=8, help="frame skip size for each input motion sequence")
     parser.add_argument("--max_frame", type=int, default=256, help="The maximum length of motion sequence (after frame skipping) which model accepts.")
     parser.add_argument("--eval_epochs", type=int, default=10, help="The number of epochs that we periodically evalute the model.")
+    parser.add_argument("--datatype", type=str, default="proxd", help="Dataset type indicator: PRO-teXt or HUMANISE.")
 
     args = parser.parse_args()
     args_dict = vars(args)
@@ -241,6 +241,7 @@ if __name__ == '__main__':
     f_vert = args_dict['f_vert']
     posa_path = args_dict['posa_path']
     eval_epochs = args_dict['eval_epochs']
+    datatype = args_dict['datatype']
 
     save_ckpt_dir = os.path.join(out_dir, experiment, "model_ckpt")
     log_dir = os.path.join(out_dir, experiment, "tb_log")
@@ -249,15 +250,23 @@ if __name__ == '__main__':
     dtype = torch.float32
     kl_w = 0.5
 
-    train_dataset = ProxDataset_txt(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
-                                   step_multiplier=1, jump_step=jump_step)
-    train_data_loader = DataLoader(train_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
-    valid_dataset = ProxDataset_txt(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
-                                   step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
-
+    if datatype == "proxd":
+        train_dataset = ProxDataset_txt(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        train_data_loader = DataLoader(train_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
+        valid_dataset = ProxDataset_txt(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        valid_data_loader = DataLoader(valid_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
+    else:
+        train_dataset = HUMANISE(train_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        train_data_loader = DataLoader(train_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
+        valid_dataset = HUMANISE(valid_data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        valid_data_loader = DataLoader(valid_dataset, batch_size=6, shuffle=True, num_workers=num_workers)
+    
     # Create model and diffusion object
-    model, diffusion = create_model_and_diffusion()
+    model, diffusion = create_model_and_diffusion(datatype)
     print(
         f"Training using model----encoder_mode: {encoder_mode}, decoder_mode: {decoder_mode}, max_frame: {max_frame}, "
         f"using_data: {train_data_dir}, epochs: {epochs}, "

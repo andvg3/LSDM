@@ -159,7 +159,7 @@ def validate():
             pred_cat = pred_cat.squeeze(1)
             pred_cat = torch.argmax(pred_cat, dim=1)
             target_cat = torch.argmax(target_cat, dim=1)
-            acc = (pred_cat==target_cat).sum().item() / target_cat.shape[0]
+            acc = (pred_cat==target_cat).sum().item()
 
             # recon_loss_semantics, semantics_recon_acc = compute_recon_loss(gt_cf, pr_cf, mask=mask, **args_dict)
 
@@ -170,6 +170,9 @@ def validate():
 
         total_recon_loss_semantics /= n_steps
         total_cfd /= n_steps
+        total_acc /= n_steps
+        print(n_steps)
+        raise
 
         writer.add_scalar('recon_loss_semantics/validate', total_recon_loss_semantics, e)
         writer.add_scalar('total_cfd/validate', total_cfd, e)

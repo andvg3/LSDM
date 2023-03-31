@@ -129,6 +129,7 @@ if __name__ == '__main__':
     
     seq_name_list = []
     chamfer_list = []
+    total_acc = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
     
     f = open(os.path.join(output_dir, "results.txt"), "w+")
@@ -170,14 +171,22 @@ if __name__ == '__main__':
                 const_noise=False,
                 # when experimenting guidance_scale we want to nutrileze the effect of noise on generation
             )
-
         pred = sample.float().to(device)
         loss, loss_normals = chamfer_distance(pred, target_obj.float().to(device))
         chamfer_s += loss
         chamfer_list.append(chamfer_s)
+
+        # Calculate for categorical
+        pred_cat = model.saved_cat
+        pred_cat = pred_cat.squeeze(1)
+        pred_cat = torch.argmax(pred_cat, dim=1)
+        target_cat = torch.argmax(target_cat, dim=1)
+        acc = (pred_cat==target_cat).sum().item()
+        total_acc.append(acc)
         # visualizer.destroy_window()
         out_file = lookup_tab[y[0]]
         f.write("Chamfer distance for seq {}: {:.4f}".format(out_file, chamfer_s) + '\n')
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
+    f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.close()

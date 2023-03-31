@@ -443,35 +443,38 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
         return len(self.seq_names)
 
     def __getitem__(self, idx):
-        # seq_idx = torch.randint(len(self.seq_names), size=(1,))
-        seq_idx = idx
-        seq_name = self.seq_names[seq_idx]
-        scene = seq_name.split('_')[0]
-        all_objs = self.objs[scene]
-        all_cats = self.cats[scene]
-        text_prompt, given_objs, target_obj = self.context_dict[seq_name]
-        human_verts = self.reduced_verts_dict[seq_name]
+        try:
+            # seq_idx = torch.randint(len(self.seq_names), size=(1,))
+            seq_idx = idx
+            seq_name = self.seq_names[seq_idx]
+            scene = seq_name.split('_')[0]
+            all_objs = self.objs[scene]
+            all_cats = self.cats[scene]
+            text_prompt, given_objs, target_obj = self.context_dict[seq_name]
+            human_verts = self.reduced_verts_dict[seq_name]
 
-        # Initialize for objects, note that, the first object is human
-        obj_verts = torch.zeros(self.max_objs+1, self.pnt_size, 3)
-        obj_verts[0] = human_verts.clone().detach()
-        obj_mask = torch.zeros(self.max_objs+1)
-        obj_cats = torch.zeros(self.max_objs+1, self.max_cats)
-        obj_cats[0][self._cat['human']] = 1
-        for idx, obj in enumerate(given_objs):
-            cat = obj.split('_')[0]
-            obj_verts[idx+1] = torch.tensor(all_objs[obj])
-            obj_mask[idx+1] = 1
-            obj_cats[idx+1][self._cat[cat]] = 1
+            # Initialize for objects, note that, the first object is human
+            obj_verts = torch.zeros(self.max_objs+1, self.pnt_size, 3)
+            obj_verts[0] = human_verts.clone().detach()
+            obj_mask = torch.zeros(self.max_objs+1)
+            obj_cats = torch.zeros(self.max_objs+1, self.max_cats)
+            obj_cats[0][self._cat['human']] = 1
+            for idx, obj in enumerate(given_objs):
+                cat = obj.split('_')[0]
+                obj_verts[idx+1] = torch.tensor(all_objs[obj])
+                obj_mask[idx+1] = 1
+                obj_cats[idx+1][self._cat[cat]] = 1
 
-        # Retrieve information of target vertices
-        target_verts = all_objs[target_obj]
-        target_cat = target_obj.split('_')[0]
-        target_num = self._cat[target_cat]
-        target_cat = torch.zeros(self.max_cats)
-        target_cat[target_num] = 1
+            # Retrieve information of target vertices
+            target_verts = all_objs[target_obj]
+            target_cat = target_obj.split('_')[0]
+            target_num = self._cat[target_cat]
+            target_cat = torch.zeros(self.max_cats)
+            target_cat[target_num] = 1
 
-        return obj_mask, obj_verts, obj_cats, target_verts, target_cat, text_prompt
+            return obj_mask, obj_verts, obj_cats, target_verts, target_cat, text_prompt
+        except:
+            print(seq_name)
 
 
 if __name__ == "__main__":

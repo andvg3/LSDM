@@ -476,8 +476,8 @@ class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset'
 
 class HUMANISE(Dataset):    # when jump_step=8, for a whole seq, dataset's max_frame is 165, max num_seg is 29
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, max_frame=220,
-                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, max_objs=3, pnt_size=1024, 
-                 objs_data_dir='data/humanise/objs', max_cats=8, **kwargs):
+                 ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, max_objs=8, pnt_size=1024, 
+                 objs_data_dir='data/humanise/objs', max_cats=11, **kwargs):
         '''
             data_dir: directory that stores processed PROXD dataset.
             fix_orientation: flag that specifies whether we always make the first pose in a motion sequence facing
@@ -534,13 +534,16 @@ class HUMANISE(Dataset):    # when jump_step=8, for a whole seq, dataset's max_f
     def _cat(self):
     
         return {
-            "cabinet": 7, 		# cabinet
             "bed": 1,		# bed
             "sofa": 2,  		# sofa
             "table": 3,		# table
             "door": 4,  		# door
             "desk": 5,		# desk
             "refrigerator": 6, 		# refrigerator
+            "chair": 7,
+            "counter": 8,
+            "bookshelf": 9,
+            "cabinet": 10,
             "human": 0
         }
 
@@ -555,7 +558,7 @@ class HUMANISE(Dataset):    # when jump_step=8, for a whole seq, dataset's max_f
             objs_list = os.listdir(os.path.join(self.objs_dir, scene))
             for obj_file in objs_list:
                 obj = obj_file[:-4]
-                cat = obj
+                cat = obj.split('_')[0]
                 if cat in self._cat:
                     # Read vertices of objects
                     with open(os.path.join(self.objs_dir, scene, obj_file), 'rb') as f:
@@ -584,7 +587,7 @@ class HUMANISE(Dataset):    # when jump_step=8, for a whole seq, dataset's max_f
         obj_cats = torch.zeros(self.max_objs+1, self.max_cats)
         obj_cats[0][self._cat['human']] = 1
         for idx, obj in enumerate(given_objs):
-            cat = obj
+            cat = obj.split('_')[0]
             obj_verts[idx+1] = torch.tensor(all_objs[obj])
             obj_mask[idx+1] = 1
             obj_cats[idx+1][self._cat[cat]] = 1

@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import posa.vis_utils as vis_utils
 import posa.general_utils as general_utils
 import posa.data_utils as du
-from posa.dataset import ProxDataset_txt
+from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.model_util import create_model_and_diffusion
 
@@ -63,6 +63,7 @@ if __name__ == '__main__':
     parser.add_argument("--f_vert", type=int, default=64)
     parser.add_argument("--max_frame", type=int, default=256)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--datatype", type=str, default="proxd")
 
     # Parse arguments and assign directories
     args = parser.parse_args()
@@ -92,6 +93,7 @@ if __name__ == '__main__':
     f_vert = args_dict['f_vert']
     posa_path = args_dict['posa_path']
     seed = args_dict['seed']
+    datatype = args_dict['datatype']
 
     # Argument logic check
     if visualize and save_video:
@@ -108,10 +110,15 @@ if __name__ == '__main__':
     associated_joints = torch.argmax(ds_weights, dim=1)
     torch.manual_seed(seed)
 
-    valid_dataset = ProxDataset_txt(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
-                                   step_multiplier=1, jump_step=jump_step)
-    valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
-    model, diffusion = create_model_and_diffusion()
+    if datatype == 'proxd':
+        valid_dataset = ProxDataset_txt(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
+    else:
+        valid_dataset = HUMANISE(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
+                                    step_multiplier=1, jump_step=jump_step)
+        valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
+    model, diffusion = create_model_and_diffusion(datatype)
     model.eval()
     checkpoint = torch.load(ckpt_path)
     model.load_state_dict(checkpoint['model_state_dict'])
@@ -186,6 +193,13 @@ if __name__ == '__main__':
         # visualizer.destroy_window()
         out_file = lookup_tab[y[0]]
         f.write("Chamfer distance for seq {}: {:.4f}".format(out_file, chamfer_s) + '\n')
+
+        # Write predicted points to files
+        if not os.path.exists(os.path.join(output_dir, 'predictions')):
+            os.makedirs(os.path.join(output_dir, 'predictions'))
+        with open(os.path.join(output_dir, 'predictions', out_file + '.npy'), 'wb') as fp:
+            pred = pred[0].cpu().numpy()
+            np.save(fp, pred)
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')

@@ -66,10 +66,10 @@ def get_default_model_humanise():
         'cond_mask_prob': 1.0, 
         'device': 0, 
         'vert_dims': 655, 
-        'obj_cat': 3, 
+        'obj_cat': 8, 
         'data_rep': 'rot6d', 
         'njoints': 251,
-        'max_cats': 8,
+        'max_cats': 11,
     }
 
 

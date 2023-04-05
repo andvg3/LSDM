@@ -167,6 +167,16 @@ if __name__ == "__main__":
                 # TODO: to get a better estimation of next class distribution, we shall fill in translations/angles/sizes
         # Get next object class distribution
         room_mask = torch.ones((1, 1, 64, 64)).to(device)
+        boxes['room_layout'] = room_mask
+        boxes['lengths'] = torch.zeros(1).to(device)
+        boxes['class_labels_tr'] = torch.zeros((1, 1, 23)).to(device)
+        boxes['translations_tr'] = torch.zeros((1, 1, 3)).to(device)
+        boxes['sizes_tr'] = torch.zeros((1, 1, 3)).to(device)
+        boxes['angles_tr'] = torch.zeros((1, 1, 1)).to(device)
+        y = network(boxes)
+        sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = y.members
+        for member in y.members:
+            print(member.data.shape)
         class_prob = network.distribution_classes(boxes, room_mask)
         class_prob = class_prob.squeeze().detach().numpy()
 

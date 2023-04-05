@@ -9,9 +9,6 @@
 import torch
 import torch.nn as nn
 
-from fast_transformers.builders import TransformerEncoderBuilder
-from fast_transformers.masking import LengthMask
-
 from .base import FixedPositionalEncoding
 from ..stats_logger import StatsLogger
 
@@ -20,18 +17,11 @@ class BaseAutoregressiveTransformer(nn.Module):
     def __init__(self, input_dims, hidden2output, feature_extractor, config):
         super().__init__()
         # Build a transformer encoder
-        self.transformer_encoder = TransformerEncoderBuilder.from_kwargs(
-            n_layers=config.get("n_layers", 6),
-            n_heads=config.get("n_heads", 12),
-            query_dimensions=config.get("query_dimensions", 64),
-            value_dimensions=config.get("value_dimensions", 64),
-            feed_forward_dimensions=config.get(
-                "feed_forward_dimensions", 3072
-            ),
-            attention_type="full",
-            activation="gelu"
-        ).get()
-
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=512, nhead=config.get("n_heads", 12),
+            dim_feedforward=config.get("feed_forward_dimensions", 3072), activation="gelu"
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=config.get("n_layers", 6))
         self.register_parameter(
             "start_token_embedding",
             nn.Parameter(torch.randn(1, 512))
@@ -147,11 +137,7 @@ class AutoregressiveTransformer(BaseAutoregressiveTransformer):
         X = self.fc(X)
 
         # Compute the features using causal masking
-        lengths = LengthMask(
-            sample_params["lengths"]+2,
-            max_len=X.shape[1]
-        )
-        F = self.transformer_encoder(X, length_mask=lengths)
+        F = self.transformer_encoder(X)
         return self.hidden2output(F[:, 1:2], sample_params)
 
     def _encode(self, boxes, room_mask):
@@ -552,10 +538,6 @@ class AutoregressiveTransformerPE(AutoregressiveTransformer):
         X = self.fc(X)
 
         # Compute the features using causal masking
-        lengths = LengthMask(
-            sample_params["lengths"]+2,
-            max_len=X.shape[1]
-        )
         F = self.transformer_encoder(X, length_mask=lengths)
         return self.hidden2output(F[:, 1:2], sample_params)
 

@@ -348,7 +348,7 @@ class ProxDataset_ds(Dataset):    # when jump_step=8, for a whole seq, dataset's
 class ProxDataset_txt(Dataset):    # when jump_step=8, for a whole seq, dataset's max_frame is 165, max num_seg is 29
     def __init__(self, data_dir, fix_orientation=False, no_obj_classes=8, max_frame=220,
                  ds_weights_path="posa/support_files/downsampled_weights.npy", jump_step=8, step_multiplier=1, max_objs=8, pnt_size=1024, 
-                 objs_data_dir='data/objs', max_cats=13, **kwargs):
+                 objs_data_dir='data/protext/objs', max_cats=13, **kwargs):
         '''
             data_dir: directory that stores processed PROXD dataset.
             fix_orientation: flag that specifies whether we always make the first pose in a motion sequence facing

@@ -23,6 +23,7 @@ from util.translate_obj_bbox import *
 
 from atiss.scripts.training_utils import load_config
 from atiss.scene_synthesis.networks import build_network
+from atiss.scene_synthesis.losses import dmll
 """
 Running sample:
 python train_contactformer.py --train_data_dir ../data/proxd_train --valid_data_dir ../data/proxd_valid --fix_ori --epochs 1000 --jump_step 8
@@ -66,17 +67,16 @@ def train():
         boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
         output_obj = model(boxes)
         class_labels = output_obj.members[-1]
-        output_obj = tuple(map(lambda x: x.mean(dim=-1), output_obj.members))
 
         # Get the output boxes
-        sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, _ = output_obj
+        sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = output_obj.members
         pred_sizes = torch.cat([sizes_x, sizes_y, sizes_z], dim=-1)
         pred_translation = torch.cat([translations_x, translations_y, translations_z], dim=-1)
         
         gt_translation, gt_size = translate_target_obj_to_bbox(target_obj)
         gt_translation, gt_size = gt_translation.to(device), gt_size.to(device)
         class_labels = class_labels.squeeze(1)
-        loss = ((pred_sizes - gt_size) ** 2).mean() + \
+        loss =  ((pred_sizes - gt_size) ** 2).mean() + \
                 ((pred_translation - gt_translation) ** 2).mean() + \
                 cat_loss(class_labels, target_cat.argmax(dim=-1).long())
         total_train_loss += loss
@@ -145,11 +145,9 @@ def validate():
             boxes['sizes_tr'] = torch.ones((bs, 1, 3)).to(device)
             boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
             output_obj = model(boxes)
-            class_labels = output_obj.members[-1]
-            output_obj = tuple(map(lambda x: x.mean(dim=-1), output_obj.members))
-
+            
             # Get the output boxes
-            sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, _ = output_obj
+            sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = output_obj.members
             pred_sizes = torch.cat([sizes_x, sizes_y, sizes_z], dim=-1)
             pred_translation = torch.cat([translations_x, translations_y, translations_z], dim=-1)
 

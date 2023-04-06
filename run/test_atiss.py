@@ -180,11 +180,9 @@ if __name__ == '__main__':
         boxes['sizes_tr'] = torch.ones((bs, 1, 3)).to(device)
         boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
         output_obj = model(boxes)
-        class_labels = output_obj.members[-1]
-        output_obj = tuple(map(lambda x: x.mean(dim=-1), output_obj.members))
 
         # Get the output boxes
-        sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, _ = output_obj
+        sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = output_obj.members
         pred_sizes = torch.cat([sizes_x, sizes_y, sizes_z], dim=-1)
         pred_translation = torch.cat([translations_x, translations_y, translations_z], dim=-1)
 

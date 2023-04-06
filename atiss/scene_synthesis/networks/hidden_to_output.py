@@ -108,7 +108,9 @@ class AutoregressiveDMLL(Hidden2Output):
             nn.ReLU(),
             nn.Linear(2*hidden_size, hidden_size),
             nn.ReLU(),
-            nn.Linear(hidden_size, output_size)
+            nn.Linear(hidden_size, output_size),
+            nn.ReLU(),
+            nn.Linear(output_size, 1)
         ]
         return nn.Sequential(*mlp_layers)
 

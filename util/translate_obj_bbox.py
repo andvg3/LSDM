@@ -58,9 +58,11 @@ def translate_bbox_obj(translation, size, point_size=1024):
             size: numpy.array([3])
     Output: obj: torch.tensor([1024, 3])
     """
-    bs, _ = size.shape
+    bs  = size.shape[0]
     device = translation.device
     obj = []
+    size = size.squeeze(1)
+    translation = translation.squeeze(1)
     for pnt in range(point_size):
         xyz = (torch.rand(bs, 3).to(device) - 0.5) * size + translation
         xyz = xyz.unsqueeze(1)

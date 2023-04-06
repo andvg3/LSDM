@@ -18,6 +18,8 @@ from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.translate_obj_bbox import *
 
+from contact_former.bridge_model import BridgeModel
+from contact_former.contact_former import ContactFormer
 from atiss.scripts.training_utils import load_config
 from atiss.scene_synthesis.networks import build_network
 
@@ -38,7 +40,7 @@ if __name__ == '__main__':
                         help="path to POSA_temp dataset dir")
     parser.add_argument("--load_model", type=str, default="training/contactformer/model_ckpt/best_model_recon_acc.pt",
                         help="checkpoint path to load")
-    parser.add_argument("--posa_path", type=str, default="training/posa/model_ckpt/epoch_0349.pt")
+    parser.add_argument("--posa_path", type=str, default="training/posa/model_ckpt/best_model_recon_acc.pt")
     parser.add_argument("--visualize", dest="visualize", action='store_const', const=True, default=False)
     parser.add_argument("--scene_dir", type=str, default="data/scenes",
                         help="the path to the scene mesh")
@@ -67,6 +69,7 @@ if __name__ == '__main__':
     parser.add_argument("--max_frame", type=int, default=256)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--datatype", type=str, default="proxd")
+    parser.add_argument("--cf_ckpt", type=str, default="training/contactformer/model_ckpt/best_model_recon_acc.pt", help="Path to pretrain ContactFormer")
 
     # Parse arguments and assign directories
     args = parser.parse_args()
@@ -97,6 +100,7 @@ if __name__ == '__main__':
     posa_path = args_dict['posa_path']
     seed = args_dict['seed']
     datatype = args_dict['datatype']
+    cf_ckpt_path = args_dict['cf_ckpt']
 
     # Argument logic check
     if visualize and save_video:
@@ -121,16 +125,27 @@ if __name__ == '__main__':
         valid_dataset = HUMANISE(data_dir, max_frame=max_frame, fix_orientation=fix_ori,
                                     step_multiplier=1, jump_step=jump_step)
         valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=False, num_workers=0)
+    
+    # Create ContactFormer and ATISS model
+    cf_model = ContactFormer(seg_len=max_frame, encoder_mode=encoder_mode, decoder_mode=decoder_mode,
+                          n_layer=n_layer, n_head=n_head, f_vert=f_vert, dim_ff=dim_ff, d_hid=512,
+                          posa_path=posa_path).to(device)
+    cf_model.eval()
+    cf_checkpoint = torch.load(cf_ckpt_path)
+    cf_model.load_state_dict(cf_checkpoint['model_state_dict'])
+
+    # Setup for ATISS model
     config_path = os.path.join("atiss", "config", "bedrooms_eval_config.yaml")
     config = load_config(config_path)
     num_classes = valid_dataset.max_cats
-    model, _, _ = build_network(
+    atiss_model, _, _ = build_network(
         num_classes + 7, num_classes,
         config, None, device=device
     )
-    model.eval()
+    atiss_model.eval()
     checkpoint = torch.load(ckpt_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    atiss_model.load_state_dict(checkpoint['model_state_dict'])
+    model = BridgeModel(atiss_model, cf_model, datatype, num_classes, device=device)
 
     # Setup names for output files
     context_dir = os.path.join(data_dir, 'context')
@@ -163,29 +178,8 @@ if __name__ == '__main__':
         class_acc_list = [[] for _ in range(num_obj_classes)]
         class_acc = dict()
 
-        # Calculate number of objects
-        num_obj = len(mask[0])
-        for idx in range(1, len(mask[0])):
-            if mask[0][idx] == 0:
-                num_obj = idx
-                break
-        # Compute boxes for ATISS model
-        bs, _, _, _ = given_objs.shape
-        translations, sizes = translate_objs_to_bbox(given_objs[:, :num_obj], mask[:, :num_obj])
-        boxes = {}
-        boxes['class_labels'] = given_cats[:, :num_obj]
-        boxes['translations'] = translations.to(device)
-        boxes['sizes'] = sizes.to(device)
-        boxes['angles'] = torch.zeros((bs, num_obj, 1)).to(device)
-
-        # Fill in input boxes attribute
-        boxes['room_layout'] = torch.ones((bs, 1, 64, 64)).to(device)
-        boxes['lengths'] = torch.ones(1).to(device)
-        boxes['class_labels_tr'] = torch.ones((bs, 1, num_classes)).to(device)
-        boxes['translations_tr'] = torch.ones((bs, 1, 3)).to(device)
-        boxes['sizes_tr'] = torch.ones((bs, 1, 3)).to(device)
-        boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
-        output_obj = model(boxes)
+        # Compute output for joint ATISS & ContactFormer model
+        output_obj = model(given_objs, given_cats, mask)
 
         # Get the output boxes
         sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = output_obj.members

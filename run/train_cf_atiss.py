@@ -21,6 +21,8 @@ from posa.general_utils import compute_recon_loss, compute_delta
 
 from util.translate_obj_bbox import *
 
+from contact_former.bridge_model import BridgeModel
+from contact_former.contact_former import ContactFormer
 from atiss.scripts.training_utils import load_config
 from atiss.scene_synthesis.networks import build_network
 from atiss.scene_synthesis.losses import dmll
@@ -49,29 +51,8 @@ def train():
         target_obj = target_obj.to(device)
         target_cat = target_cat.to(device)
 
-        # Calculate number of objects
-        num_obj = len(mask[0])
-        for idx in range(1, len(mask[0])):
-            if mask[0][idx] == 0:
-                num_obj = idx
-                break
-        # Compute boxes for ATISS model
-        bs, _, _, _ = given_objs.shape
-        translations, sizes = translate_objs_to_bbox(given_objs[:, :num_obj], mask[:, :num_obj])
-        boxes = {}
-        boxes['class_labels'] = given_cats[:, :num_obj]
-        boxes['translations'] = translations.to(device)
-        boxes['sizes'] = sizes.to(device)
-        boxes['angles'] = torch.zeros((bs, num_obj, 1)).to(device)
-
-        # Fill in input boxes attribute
-        boxes['room_layout'] = torch.ones((bs, 1, 64, 64)).to(device)
-        boxes['lengths'] = torch.ones(1).to(device)
-        boxes['class_labels_tr'] = torch.ones((bs, 1, num_classes)).to(device)
-        boxes['translations_tr'] = torch.ones((bs, 1, 3)).to(device)
-        boxes['sizes_tr'] = torch.ones((bs, 1, 3)).to(device)
-        boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
-        output_obj = model(boxes)
+        # Compute output for joint ATISS & ContactFormer model
+        output_obj = model(given_objs, given_cats, mask)
         class_labels = output_obj.members[-1]
 
         # Get the output boxes
@@ -134,29 +115,10 @@ def validate():
             target_obj = target_obj.to(device)
             target_cat = target_cat.to(device)
 
-            # Calculate number of objects
-            num_obj = len(mask[0])
-            for idx in range(1, len(mask[0])):
-                if mask[0][idx] == 0:
-                    num_obj = idx
-                    break
             # Compute boxes for ATISS model
-            bs, _, _, _ = given_objs.shape
-            translations, sizes = translate_objs_to_bbox(given_objs[:, :num_obj], mask[:, :num_obj])
-            boxes = {}
-            boxes['class_labels'] = given_cats[:, :num_obj]
-            boxes['translations'] = translations.to(device)
-            boxes['sizes'] = sizes.to(device)
-            boxes['angles'] = torch.zeros((bs, num_obj, 1)).to(device)
-
-            # Fill in input boxes attribute
-            boxes['room_layout'] = torch.ones((bs, 1, 64, 64)).to(device)
-            boxes['lengths'] = torch.ones(1).to(device)
-            boxes['class_labels_tr'] = torch.ones((bs, 1, num_classes)).to(device)
-            boxes['translations_tr'] = torch.ones((bs, 1, 3)).to(device)
-            boxes['sizes_tr'] = torch.ones((bs, 1, 3)).to(device)
-            boxes['angles_tr'] = torch.ones((bs, 1, 1)).to(device)
-            output_obj = model(boxes)
+            # Compute output for joint ATISS & ContactFormer model
+            output_obj = model(given_objs, given_cats, mask)
+            class_labels = output_obj.members[-1]
             
             # Get the output boxes
             sizes_x, sizes_y, sizes_z, translations_x, translations_y, translations_z, angles, class_labels = output_obj.members
@@ -233,6 +195,7 @@ if __name__ == '__main__':
     parser.add_argument("--max_frame", type=int, default=256, help="The maximum length of motion sequence (after frame skipping) which model accepts.")
     parser.add_argument("--eval_epochs", type=int, default=10, help="The number of epochs that we periodically evalute the model.")
     parser.add_argument("--datatype", type=str, default="proxd", help="Dataset type indicator: PRO-teXt or HUMANISE.")
+    parser.add_argument("--cf_ckpt", type=str, default="training/contactformer/model_ckpt/best_model_recon_acc.pt", help="Path to pretrain ContactFormer")
 
     args = parser.parse_args()
     args_dict = vars(args)
@@ -259,6 +222,7 @@ if __name__ == '__main__':
     posa_path = args_dict['posa_path']
     eval_epochs = args_dict['eval_epochs']
     datatype = args_dict['datatype']
+    cf_ckpt_path = args_dict['cf_ckpt']
 
     save_ckpt_dir = os.path.join(out_dir, experiment, "model_ckpt")
     log_dir = os.path.join(out_dir, experiment, "tb_log")
@@ -282,14 +246,22 @@ if __name__ == '__main__':
                                     step_multiplier=1, jump_step=jump_step)
         valid_data_loader = DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=num_workers)
     
-    # Create model and diffusion object
+    # Create ContactFormer and ATISS model
+    cf_model = ContactFormer(seg_len=max_frame, encoder_mode=encoder_mode, decoder_mode=decoder_mode,
+                          n_layer=n_layer, n_head=n_head, f_vert=f_vert, dim_ff=dim_ff, d_hid=512,
+                          posa_path=posa_path).to(device)
+    cf_model.eval()
+    cf_checkpoint = torch.load(cf_ckpt_path)
+    cf_model.load_state_dict(cf_checkpoint['model_state_dict'])
+
     config_path = os.path.join("atiss", "config", "bedrooms_eval_config.yaml")
     config = load_config(config_path)
     num_classes = train_dataset.max_cats
-    model, _, _ = build_network(
+    atiss_model, _, _ = build_network(
         num_classes + 7, num_classes,
         config, None, device=device
     )
+    model = BridgeModel(atiss_model, cf_model, datatype, num_classes, device=device)
     optimizer = AdamW(model.parameters())
     print(
         f"Training using model----encoder_mode: {encoder_mode}, decoder_mode: {decoder_mode}, max_frame: {max_frame}, "
@@ -330,7 +302,7 @@ if __name__ == '__main__':
 
             data = {
                 'epoch': e,
-                'model_state_dict': model.state_dict(),
+                'model_state_dict': model.atiss_model.state_dict(),
                 # 'optimizer_state_dict': optimizer.state_dict(),
                 'total_train_loss': total_train_loss,
                 'total_valid_loss': total_valid_loss,
@@ -342,7 +314,7 @@ if __name__ == '__main__':
                 best_valid_loss = total_valid_loss
                 data = {
                     'epoch': e,
-                    'model_state_dict': model.state_dict(),
+                    'model_state_dict': model.atiss_model.state_dict(),
                     'total_train_loss': total_train_loss,
                     'total_valid_loss': total_valid_loss,
                 }
@@ -353,7 +325,7 @@ if __name__ == '__main__':
                 best_cfd = total_cfd
                 data = {
                     'epoch': e,
-                    'model_state_dict': model.state_dict(),
+                    'model_state_dict': model.atiss_model.state_dict(),
                     'total_train_loss': total_train_loss,
                     'total_valid_loss': total_valid_loss,
                     'total_cfd': total_cfd

@@ -54,9 +54,9 @@ def translate_target_obj_to_bbox(obj):
 
 def translate_bbox_obj(translation, size, point_size=1024):
     """
-    Input: translation: numpy.array([3])
-            size: numpy.array([3])
-    Output: obj: torch.tensor([1024, 3])
+    Input: translation: numpy.array([bs, 3])
+            size: numpy.array([bs, 3])
+    Output: obj: torch.tensor([bs, 1024, 3])
     """
     bs  = size.shape[0]
     device = translation.device

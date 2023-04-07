@@ -17,6 +17,7 @@ import posa.data_utils as du
 from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.translate_obj_bbox import *
+from util.evaluation import emd
 
 from atiss.scripts.training_utils import load_config
 from atiss.scene_synthesis.networks import build_network
@@ -145,6 +146,7 @@ if __name__ == '__main__':
     
     seq_name_list = []
     chamfer_list = []
+    emd_list = []
     total_acc = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
     
@@ -160,6 +162,7 @@ if __name__ == '__main__':
         target_cat = target_cat.to(device)
 
         chamfer_s = 0
+        emd_s = 0
         class_acc_list = [[] for _ in range(num_obj_classes)]
         class_acc = dict()
 
@@ -197,9 +200,21 @@ if __name__ == '__main__':
         pr_pnts = pred
         gt_pnts = target_obj
 
+        # Get bounding box for fair comparison
+        gt_pnts = gt_pnts.squeeze(0)
+        translation, size = translate_obj_to_bbox(gt_pnts)
+        translation = torch.tensor(translation).unsqueeze(0).cpu()
+        size = torch.tensor(size).unsqueeze(0).cpu()
+        gt_pnts = translate_bbox_obj(translation, size)
+
         loss, loss_normals = chamfer_distance(pr_pnts, gt_pnts.float().to(device))
         chamfer_s += loss
         chamfer_list.append(chamfer_s)
+
+        # Calculate EMD loss
+        emd_loss = emd(pr_pnts.detach().cpu(), gt_pnts.detach().cpu())
+        emd_s += emd_loss
+        emd_list.append(emd_s)
 
         # Calculate for categorical
         class_labels = class_labels.squeeze(1).argmax(dim=-1)
@@ -218,5 +233,6 @@ if __name__ == '__main__':
             np.save(fp, pred)
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
+    f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.close()

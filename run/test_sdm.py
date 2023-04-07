@@ -17,7 +17,7 @@ import posa.data_utils as du
 from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.model_util import create_model_and_diffusion
-
+from util.evaluation import emd
 """
 Running sample:
 python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --test_on_valid_set --output_dir ../test_output
@@ -136,6 +136,7 @@ if __name__ == '__main__':
     
     seq_name_list = []
     chamfer_list = []
+    emd_list = []
     total_acc = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
     
@@ -151,6 +152,7 @@ if __name__ == '__main__':
         target_cat = target_cat.to(device)
 
         chamfer_s = 0
+        emd_s = 0
         class_acc_list = [[] for _ in range(num_obj_classes)]
         class_acc = dict()
         use_ddim = False  # FIXME - hardcoded
@@ -183,6 +185,11 @@ if __name__ == '__main__':
         chamfer_s += loss
         chamfer_list.append(chamfer_s)
 
+        # Calculate EMD loss
+        emd_loss = emd(pred.detach().cpu(), target_obj.detach().cpu())
+        emd_s += emd_loss
+        emd_list.append(emd_s)
+
         # Calculate for categorical
         pred_cat = model.saved_cat
         pred_cat = pred_cat.squeeze(1)
@@ -202,5 +209,6 @@ if __name__ == '__main__':
             np.save(fp, pred)
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
+    f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.close()

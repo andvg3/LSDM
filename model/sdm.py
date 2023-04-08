@@ -7,6 +7,8 @@ import clip
 
 from model.diffusion_utils import *
 from model.pcd_backbone.pointnet2 import get_backbone
+from model.pcd_backbone.dgcnn import DGCNN
+from model.p2rnet.stgcn import STGCN
 
 from posa.posa_models import Decoder as POSA_Decoder
 
@@ -16,7 +18,7 @@ class SceneDiffusionModel(nn.Module):
     def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=512, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
                  cat_emb=32, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
                  data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, max_cats=13, translation_params=12,
-                 **kwargs) -> None:
+                 pcd_backbone_type="PNT2", human_backbone_type = "P2R", **kwargs) -> None:
         super().__init__()
         self.seg_len = seg_len
         self.pcd_points = pcd_points
@@ -87,9 +89,17 @@ class SceneDiffusionModel(nn.Module):
         ).to(self.device)
 
         # Setup pointcloud backbone for point cloud extraction
+        # Point cloud backbone
         self.pcd_attention = MultiheadAttention(embed_dim=self.translation_params, num_heads=self.translation_params, kdim=self.xyz_dim, vdim=self.xyz_dim, batch_first=True).to(self.device)
-        self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
-        self.human_backbone = POSA_Decoder(input_feats=xyz_dim, pcd_dim=self.pcd_points).to(self.device)
+        if pcd_backbone_type == "DGCNN":
+            self.pcd_backbone = DGCNN(emb_dims=clip_dim, output_channels=pcd_points*xyz_dim).to(self.device)
+        else:
+            self.pcd_backbone = get_backbone(self.pcd_dim).to(self.device)
+
+        if human_backbone_type == "P2R":
+            self.human_backbone = STGCN().to(self.device)
+        else:
+            self.human_backbone = POSA_Decoder(input_feats=xyz_dim, pcd_dim=self.pcd_points).to(self.device)
         # self.pcd_attention = MultiheadAttention(embed_dim=self.latent_dim)
 
         # Setup combination layers for extracted information

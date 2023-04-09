@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import MultiheadAttention
+from transformers import BertTokenizer, BertModel
 import clip
 
 from model.diffusion_utils import *
@@ -15,10 +16,10 @@ from posa.posa_models import Decoder as POSA_Decoder
 
 
 class SceneDiffusionModel(nn.Module):
-    def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=512, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
+    def __init__(self, seg_len=256, modality='text', clip_version='ViT-B/32', clip_dim=768, dropout=0.1, n_layer=6, n_head=8, f_vert=64, dim_ff=512,
                  cat_emb=32, mesh_ds_dir="data/mesh_ds", posa_path=None, latent_dim=128, cond_mask_prob=1.0, device=0, vert_dims=655, obj_cat=8, 
                  data_rep='rot6d', njoints=251, use_cuda=True, pcd_points=1024, pcd_dim=128, xyz_dim=3, max_cats=13, translation_params=12,
-                 pcd_backbone_type="PNT2", human_backbone_type = "P2R", **kwargs) -> None:
+                 pcd_backbone_type="PNT2", human_backbone_type="POSA", text_encoder_type="CLIP", **kwargs) -> None:
         super().__init__()
         self.seg_len = seg_len
         self.pcd_points = pcd_points
@@ -35,6 +36,7 @@ class SceneDiffusionModel(nn.Module):
         self.input_feats = vert_dims * obj_cat
         self.n_head = n_head
         self.translation_params = translation_params
+        self.text_encoder_type = text_encoder_type
         self.device = "cuda:{}".format(device) if use_cuda else "cpu"
 
         # Setup modality for the model, e.g., text.
@@ -137,7 +139,11 @@ class SceneDiffusionModel(nn.Module):
 
         # Embed features from modality
         if self.modality == 'text':
-            enc_text = self._encode_text(y)
+            if self.text_encoder_type == "CLIP":
+                enc_text = self._encode_text_clip(y)
+            else:
+                enc_text = self._encode_text_bert(y)
+            
             # Pass through linear layer of text
             enc_text = self.embed_text(enc_text)
             # enc_text = self.embed_text(self._mask_cond(enc_text, force_mask=force_mask))
@@ -190,7 +196,7 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out * mask
         pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
         pcd_out = pcd_out.sum(dim=1)
-        pcd_out = (pcd_out + hm_out)/2
+        pcd_out = (pcd_out + hm_out * 0.0)/2
         x += pcd_out
 
         # Final embedding features
@@ -211,9 +217,12 @@ class SceneDiffusionModel(nn.Module):
                 nn.Linear(self.clip_dim//2, self.latent_dim),
                 nn.GELU()
             ).to(self.device)
-            self.clip_version = self.clip_version
-            self.clip_model = self._load_and_freeze_clip(self.clip_version, device=self.device)
-    
+            if self.text_encoder_type == "CLIP":
+                self.clip_version = self.clip_version
+                self.clip_model = self._load_and_freeze_clip(self.clip_version, device=self.device)
+            else:
+                self._load_and_freeze_bert()
+
     def _mask_cond(self, cond, force_mask=False):
         bs, d = cond.shape
         if force_mask:
@@ -224,7 +233,7 @@ class SceneDiffusionModel(nn.Module):
         else:
             return cond
         
-    def _encode_text(self, raw_text):
+    def _encode_text_clip(self, raw_text):
         # raw_text - list (batch_size length) of strings with input text prompts
         device = self.device
         max_text_len = 20 # Specific hardcoding for humanml dataset
@@ -240,6 +249,11 @@ class SceneDiffusionModel(nn.Module):
             texts = clip.tokenize(raw_text, truncate=True).to(device) # [bs, context_length] # if n_tokens > 77 -> will truncate
         return self.clip_model.encode_text(texts).float()
 
+    def _encode_text_bert(self, raw_text):
+        encoded_input = self.tokenizer(list(raw_text), padding=True, return_tensors='pt').to(self.device)
+        output = self.text_encoder_model(**encoded_input)
+        return output.pooler_output
+
     def _load_and_freeze_clip(self, clip_version, device=None):
         clip_model, clip_preprocess = clip.load(clip_version, device=device,
                                                 jit=False)  # Must set jit=False for training
@@ -252,6 +266,14 @@ class SceneDiffusionModel(nn.Module):
             p.requires_grad = False
 
         return clip_model
+    
+    def _load_and_freeze_bert(self):
+        bert_version = "bert-base-uncased"
+        self.tokenizer = BertTokenizer.from_pretrained(bert_version)
+        self.text_encoder_model = BertModel.from_pretrained(bert_version).to(self.device)
+        self.text_encoder_model.eval()
+        for p in self.text_encoder_model.parameters():
+            p.requires_grad = False
 
 
 if __name__ == '__main__':

@@ -29,6 +29,24 @@ def gen_human_meshes(vertices_path, output_path):
         o3d.io.write_triangle_mesh(os.path.join(output_path, "human_" + str(frame) + ".ply"), mesh)
 
 
+def gen_human_meshes_humanise(vertices_path, body_faces, output_path):
+    vertices = np.load(open(vertices_path, "rb"))
+    # If your input human vertices are full resolution SMPL-X bodies, use mesh_0.obj
+    # faces = trimesh.load(os.path.join("mesh_ds", "mesh_0.obj"), process=False).faces
+    faces = body_faces
+
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    print("Saving human meshes to", output_path)
+    for frame in tqdm(range(vertices.shape[0])):
+        vertices_frame = vertices[frame]
+        mesh = create_o3d_mesh_from_vertices_faces(vertices_frame, faces)
+        vertex_colors = np.ones_like(vertices_frame)
+        mesh.vertex_colors = o3d.utility.Vector3dVector(vertex_colors)
+        o3d.io.write_triangle_mesh(os.path.join(output_path, "human_" + str(frame) + ".ply"), mesh)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("sequence_name",

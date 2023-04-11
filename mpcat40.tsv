@@ -30,7 +30,7 @@ mpcat40index	mpcat40	hex	wnsynsetkey	nyu40	skip	labels
 28	lighting	#b5cf6b	lamp.n.02,lampshade.n.01,light.n.02,chandelier.n.01,spotlight.n.02	lamp		
 29	beam	#5254a3	beam.n.02			
 30	railing	#bd9e39	railing.n.01,bannister.n.02			
-31	shelving	#c49c94	bookshelf.n.01,shelf.n.01,rack.n.05	shelves		
+31	shelf	#c49c94	bookshelf.n.01,shelf.n.01,rack.n.05	shelves		
 32	blinds	#f7b6d2	window_blind.n.01	blinds		
 33	gym_equipment	#6b6ecf	sports_equipment.n.01,treadmill.n.01,exercise_bike.n.01			
 34	seating	#ffbb78	bench.n.01,seat.n.03			

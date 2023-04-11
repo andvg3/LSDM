@@ -196,7 +196,7 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out * mask
         pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
         pcd_out = pcd_out.sum(dim=1)
-        pcd_out = (pcd_out + hm_out * 0.0)/2
+        pcd_out = (pcd_out + hm_out)/2
         x += pcd_out
 
         # Final embedding features

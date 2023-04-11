@@ -3,6 +3,7 @@ import json
 import math
 import os
 import time
+import pickle
 
 import numpy as np
 import open3d as o3d
@@ -14,7 +15,7 @@ from scipy.spatial.transform import Rotation as R
 import config
 
 from place_obj_opt import grid_search, optimization
-from utils import read_mpcat40, pred_subset_to_mpcat40, estimate_floor_height, read_sequence_human_mesh, merge_meshes, generate_sdf, trimesh_from_o3d, create_o3d_pcd_from_points, write_verts_faces_obj, create_o3d_mesh_from_vertices_faces, align_obj_to_floor
+from utils import read_mpcat40, pred_subset_to_mpcat40, estimate_floor_height, read_sequence_human_mesh, merge_meshes, generate_sdf, trimesh_from_o3d, create_o3d_pcd_from_points, write_verts_faces_obj, create_o3d_mesh_from_vertices_faces, align_obj_to_floor, read_sequence_human_mesh_humanise
 
 
 if __name__ == "__main__":
@@ -22,7 +23,6 @@ if __name__ == "__main__":
     parser.add_argument("--sequence_name", type=str)
     parser.add_argument("--file_name", type=str)
     parser.add_argument("--vertices_path", type=str)
-    parser.add_argument("--contact_labels_path", type=str)
     parser.add_argument("--output_dir", type=str)
     parser.add_argument("--label", type=int)
     parser.add_argument("--input_probability",
@@ -35,16 +35,16 @@ if __name__ == "__main__":
     majority_label = args.label
     
     vertices = np.load(open(args.vertices_path, "rb"))
-    
-    contact_labels = np.load(open(args.contact_labels_path, "rb"))
+    body_faces = np.load(open(args.vertices_path[:-4] + "_faces.npy", "rb"))
+
+    contact_labels = np.zeros((list(vertices.shape))).astype(int)
+    print(body_faces.data.shape, vertices.data.shape)
     
     if args.input_probability:
         contact_labels = np.argmax(contact_labels, axis=-1)
     
     label_names, color_coding_rgb = read_mpcat40()
-    
-    contact_labels = contact_labels.squeeze().astype(int)
-    
+        
     # Map contact labels to predicted subset
     vertices_down = []
     contact_labels_mapped = []
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     print()
     
     # Create human SDF
-    human_meshes = read_sequence_human_mesh(args.vertices_path)
+    human_meshes = read_sequence_human_mesh_humanise(args.vertices_path, body_faces)
     merged_human_meshes = merge_meshes(human_meshes)
     grid_dim = 256
     human_sdf_base_path = os.path.join(output_dir, sequence_name, "human")
@@ -111,7 +111,8 @@ if __name__ == "__main__":
     print()
     
     # Estimate floor height
-    floor_height = estimate_floor_height(vertices, contact_labels)
+    # floor_height = estimate_floor_height(vertices, contact_labels)
+    floor_height = 0.0
     print("Estimated floor height is", floor_height)
     print()
     print()

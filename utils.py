@@ -293,6 +293,12 @@ def read_sequence_human_mesh(vertices_path, faces_path=os.path.join("mesh_ds", "
         meshes.append(create_o3d_mesh_from_vertices_faces(vertices[frame], faces))
     return meshes
 
+def read_sequence_human_mesh_humanise(vertices_path, faces):
+    vertices = np.load(open(vertices_path, "rb"))
+    meshes = []
+    for frame in range(vertices.shape[0]):
+        meshes.append(create_o3d_mesh_from_vertices_faces(vertices[frame], faces))
+    return meshes
 
 """
 Merges a list of meshes into a single mesh

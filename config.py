@@ -1,17 +1,18 @@
 classes_eps = {
     3:  0.2, # chair
-    5:  1.0, # table
+    5:  0.2, # table
     7: 0.2, # cabinet
     10: 0.8, # sofa
     11: 1.0, # bed
-    19: 0.2  # stool
+    19: 0.1,  # stool
+    31: 0.2, #shelf
 }
 
 voting_eps = 0.1
 
 voxel_size = 0.04
 
-cluster_min_points = 10
+cluster_min_points = 9
 
 pts_per_unit = 20
 
@@ -25,7 +26,8 @@ params = {
             7:  10, # cabinet
             10: 10,  # sofa
             11: 10,  # bed
-            19: 10   # stool
+            19: 10,   # stool
+            31: 1,   # shelf
         },
         "lr": 0.003,
         "opt_steps": 200,
@@ -37,7 +39,8 @@ params = {
             7:  1, # cabinet
             10: 10,  # sofa
             11: 10,  # bed
-            19: 1    # stool
+            19: 1,    # stool
+            31: 1, # shelf
         }
     }
 }

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import argparse
 import open3d as o3d
-from gen_human_meshes import gen_human_meshes
+from gen_human_meshes import gen_human_meshes, gen_human_meshes_humanise
 import json
 from tqdm import tqdm
 
@@ -12,6 +12,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--fitting_results_path", type=str, help="Path to the fitting results of some motion sequence")
     parser.add_argument("--vertices_path", type=str, help="Path to human vertices of some motion sequence")
+    parser.add_argument("--datatype", default="PROXD", type=str, help="Data type")
 
     args = parser.parse_args()
     input_dir = Path(args.fitting_results_path)
@@ -22,7 +23,11 @@ if __name__ == '__main__':
     human_mesh_dir = input_dir / 'human' / 'mesh'
     if not human_mesh_dir.exists():
         human_mesh_dir.mkdir()
-        gen_human_meshes(vertices_path=vertices_path, output_path=human_mesh_dir)
+        if args.datatype == "PROXD":
+            gen_human_meshes(vertices_path=vertices_path, output_path=human_mesh_dir)
+        else:
+            body_faces = np.load(open(args.vertices_path[:-4] + "_faces.npy", "rb"))
+            gen_human_meshes_humanise(vertices_path, body_faces, output_path=human_mesh_dir)
 
     # Rendering results
     output_dir = input_dir / 'rendering'

@@ -125,6 +125,9 @@ class SceneDiffusionModel(nn.Module):
         self.input_process = InputProcess(self.data_rep, self.xyz_dim, self.extract_dim).to(self.device)
         self.output_process = OutputProcess(self.data_rep, self.xyz_dim, self.extract_dim, self.pcd_points).to(self.device)
         
+        # Setup save guiding points for visualization purpose
+        self.saved_guiding_points = None
+
     def forward(self, x, mask, timesteps, given_objs, given_cats, y=None, force_mask=False):
         """
         x: noisy signal - torch.Tensor.shape([bs, seq_len, dims, cat]). E.g, 1, 256, 655, 8
@@ -197,6 +200,7 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
         pcd_out = pcd_out.sum(dim=1)
         pcd_out = (pcd_out + hm_out)/2
+        self.saved_guiding_points = pcd_out
         x += pcd_out
 
         # Final embedding features

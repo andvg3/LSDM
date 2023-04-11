@@ -192,6 +192,8 @@ if __name__ == '__main__':
 
         # Calculate for categorical
         pred_cat = model.saved_cat
+        # Beside, we retrieve guiding points as the procedure is similar
+        guiding_points = model.saved_guiding_points
         pred_cat = pred_cat.squeeze(1)
         pred_cat = torch.argmax(pred_cat, dim=1)
         target_cat = torch.argmax(target_cat, dim=1)
@@ -207,6 +209,13 @@ if __name__ == '__main__':
         with open(os.path.join(output_dir, 'predictions', out_file + '.npy'), 'wb') as fp:
             pred = pred[0].cpu().numpy()
             np.save(fp, pred)
+        
+        # Write guiding points to files
+        if not os.path.exists(os.path.join(output_dir, 'guiding_points')):
+            os.makedirs(os.path.join(output_dir, 'guiding_points'))
+        with open(os.path.join(output_dir, 'guiding_points', out_file + '.npy'), 'wb') as fp:
+            guiding_points = guiding_points[0].cpu().numpy()
+            np.save(fp, guiding_points)
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')

@@ -200,7 +200,6 @@ class SceneDiffusionModel(nn.Module):
         pcd_out = pcd_out.reshape(bs, num_obj, num_points, -1)
         pcd_out = pcd_out.sum(dim=1)
         pcd_out = (pcd_out + hm_out)/2
-        self.saved_guiding_points = pcd_out
         x += pcd_out
 
         # Final embedding features
@@ -210,6 +209,11 @@ class SceneDiffusionModel(nn.Module):
         # Reconstruct features
         x = self.input_process(x, emb)
         x = self.output_process(x)
+
+        # For guiding points only
+        pcd_out = self.input_process(pcd_out, emb)
+        pcd_out = self.output_process(pcd_out)
+        self.saved_guiding_points = pcd_out
         return out_cat, x
 
     def _set_up_modality(self):

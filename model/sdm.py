@@ -135,6 +135,7 @@ class SceneDiffusionModel(nn.Module):
         mask: torch.Tensor.shape([bs, seq_len])
         timesteps: torch.Tensor.shape([bs,])
         y: modality, e.g., text
+        force_mask: mask for point cloud, only use for editing
         """
         # Embed features from time
         emb_ts = self.embed_timestep(timesteps)

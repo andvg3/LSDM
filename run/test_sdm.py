@@ -17,7 +17,7 @@ import posa.data_utils as du
 from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.model_util import create_model_and_diffusion
-from util.evaluation import emd, accuracy
+from util.evaluation import *
 """
 Running sample:
 python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --test_on_valid_set --output_dir ../test_output
@@ -137,6 +137,7 @@ if __name__ == '__main__':
     seq_name_list = []
     chamfer_list = []
     emd_list = []
+    f1_list = []
     total_acc = []
     total_topk_acc = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
@@ -191,6 +192,10 @@ if __name__ == '__main__':
         emd_s += emd_loss
         emd_list.append(emd_s)
 
+        # Calculate F1 score
+        f1_score = calculate_fscore(pred.squeeze(0).detach().cpu(), target_obj.squeeze(0).detach().cpu())
+        f1_list.append(f1_score[0])
+
         # Calculate for categorical
         pred_cat = model.saved_cat
         # Beside, we retrieve guiding points as the procedure is similar
@@ -221,6 +226,7 @@ if __name__ == '__main__':
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')
+    f.write("Final F1 score: {:.4f}".format(list_mean(f1_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.write("Top 3 accuracy: {:.4f}".format(list_mean(total_topk_acc)) + '\n')
     f.close()

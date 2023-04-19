@@ -17,7 +17,7 @@ import posa.data_utils as du
 from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.translate_obj_bbox import *
-from util.evaluation import emd, accuracy
+from util.evaluation import *
 
 from contact_former.bridge_model import BridgeModel
 from contact_former.contact_former import ContactFormer
@@ -162,6 +162,7 @@ if __name__ == '__main__':
     seq_name_list = []
     chamfer_list = []
     emd_list = []
+    f1_list = []
     total_acc = []
     total_topk_acc = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
@@ -211,6 +212,10 @@ if __name__ == '__main__':
         emd_s += emd_loss
         emd_list.append(emd_s)
 
+        # Calculate F1 score
+        f1_score = calculate_fscore(pr_pnts.squeeze(0).detach().cpu(), gt_pnts.squeeze(0).detach().cpu())
+        f1_list.append(f1_score[0])
+
         # Calculate for categorical
         target_cat = torch.argmax(target_cat, dim=1)
         total_topk_acc.append(accuracy(class_labels.squeeze(1), target_cat, topk=(3,))[0].item())
@@ -230,6 +235,7 @@ if __name__ == '__main__':
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')
+    f.write("Final F1 score: {:.4f}".format(list_mean(f1_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.write("Top 3 accuracy: {:.4f}".format(list_mean(total_topk_acc)) + '\n')
     f.close()

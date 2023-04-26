@@ -17,7 +17,7 @@ import posa.data_utils as du
 from posa.dataset import ProxDataset_txt, HUMANISE
 
 from util.model_util import create_model_and_diffusion
-from util.evaluation import emd, accuracy
+from util.evaluation import *
 """
 Running sample:
 python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --test_on_valid_set --output_dir ../test_output
@@ -94,35 +94,46 @@ def get_gt_obj(keyword: str, origin_obj):
     target_obj = target_obj.to(origin_obj.device)
     target_cat = target_cat.to(origin_obj.device)
     # Perform transformation method
-    target_obj = transform_pcd(target_obj, origin_obj)
-    return target_obj, target_cat
+    target_obj, reg_p2p = transform_pcd(target_obj, origin_obj)
+    return target_obj, target_cat, reg_p2p
 
 def transform_pcd(source, target):
     # Initialize hyperparams
-    threshold = 0.02
-    trans_init = np.asarray([[0.862, 0.011, -0.507, 0.5],
-                            [-0.139, 0.967, -0.215, 0.7],
-                            [0.487, 0.255, 0.835, -1.4], [0.0, 0.0, 0.0, 1.0]])
+    threshold = 0.2
 
     # Initialize source and target point clouds
     dv = source.device
     source = source.squeeze(0).cpu().numpy()
     target = target.squeeze(0).cpu().numpy()
-    pcd_source = o3d.geometry.PointCloud()
-    pcd_source.points = o3d.utility.Vector3dVector(source)
-    pcd_target = o3d.geometry.PointCloud()
-    pcd_target.points = o3d.utility.Vector3dVector(target)
+    vec = target.mean(0) - source.mean(0)
+    source += vec
+    best_set = -1
+    best_trans = None
+    best_reg = None
+    for n_try in range(1000):
+        trans_init = np.random.rand(4, 4)
+        trans_init[:-1,-1] = vec
+        trans_init[-1] = np.array([0.0, 0.0, 0.0, 1.0])
+        pcd_source = o3d.geometry.PointCloud()
+        pcd_source.points = o3d.utility.Vector3dVector(source)
+        pcd_target = o3d.geometry.PointCloud()
+        pcd_target.points = o3d.utility.Vector3dVector(target)
 
-    reg_p2p = o3d.pipelines.registration.registration_icp(
-        pcd_source, pcd_target, threshold, trans_init,
-        o3d.pipelines.registration.TransformationEstimationPointToPoint(),
-        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=20000),)
-    pcd_source = pcd_source.transform(reg_p2p.transformation)
-
+        reg_p2p = o3d.pipelines.registration.registration_icp(
+            pcd_source, pcd_target, threshold, trans_init,
+            o3d.pipelines.registration.TransformationEstimationPointToPoint(),
+            o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=20000),)
+        # pcd_source = pcd_source.transform(reg_p2p.transformation)
+        if len(reg_p2p.correspondence_set) > best_set:
+            best_trans = reg_p2p.transformation
+            best_set = len(reg_p2p.correspondence_set)
+            best_reg = reg_p2p
+    
+    pcd_source = pcd_source.transform(best_trans)
     # Retrieve transformed points
     target_obj = pcd_source.points
     target_obj = torch.from_numpy(np.asarray(target_obj)).unsqueeze(0).to(dv)
-    return target_obj
+    return target_obj, best_reg
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
@@ -234,8 +245,13 @@ if __name__ == '__main__':
     seq_name_list = []
     chamfer_list = []
     emd_list = []
+    f1_list = []
     total_acc = []
     total_topk_acc = []
+    # Evaluation for reg transformation
+    reg_fitness = []
+    reg_mse = []
+    reg_set = []
     seq_class_acc = [[] for _ in range(num_obj_classes)]
     
     f = open(os.path.join(output_dir, "results.txt"), "w+")
@@ -258,8 +274,12 @@ if __name__ == '__main__':
         for i in range(3):
             current_keyword = tokens[i]
             if get_gt_obj(current_keyword, target_obj):
-                target_obj, target_cat = get_gt_obj(current_keyword, target_obj)
+                target_obj, target_cat, reg_p2p = get_gt_obj(current_keyword, target_obj)
                 break
+
+        reg_fitness.append(reg_p2p.fitness)
+        reg_mse.append(reg_p2p.inlier_rmse)
+        reg_set.append(len(reg_p2p.correspondence_set))                
 
         chamfer_s = 0
         emd_s = 0
@@ -308,6 +328,10 @@ if __name__ == '__main__':
         emd_s += emd_loss
         emd_list.append(emd_s)
 
+        # Calculate F1 score
+        f1_score = calculate_fscore(pred.squeeze(0).detach().cpu(), target_obj.squeeze(0).detach().cpu())
+        f1_list.append(f1_score[0])
+
         # Calculate for categorical
         pred_cat = model.saved_cat
         # Beside, we retrieve guiding points as the procedure is similar
@@ -338,6 +362,10 @@ if __name__ == '__main__':
 
     f.write("Final Chamfer distance: {:.4f}".format(list_mean(chamfer_list)) + '\n')
     f.write("Final EMD: {:.4f}".format(list_mean(emd_list)) + '\n')
+    f.write("Final F1 score: {:.4f}".format(list_mean(f1_list)) + '\n')
     f.write("Category accuracy: {:.4f}".format(list_mean(total_acc)) + '\n')
     f.write("Top 3 accuracy: {:.4f}".format(list_mean(total_topk_acc)) + '\n')
+    f.write("Fitness: {:.4f}".format(list_mean(reg_fitness)) + '\n')
+    f.write("MSE: {:.4f}".format(list_mean(reg_mse)) + '\n')
+    f.write("Corr set: {:.4f}".format(list_mean(reg_set)) + '\n')
     f.close()

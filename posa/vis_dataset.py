@@ -14,16 +14,16 @@ python vis_dataset.py --save_video --cam_setting_path support_files/ScreenCamera
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--data_dir", type=str, default="data/proxd_train",
+    parser.add_argument("--data_dir", type=str, default="data/supp/proxd_valid",
                         help="path to POSA_temp dataset dir")
     parser.add_argument("--save_video", dest='save_video', action='store_const', const=True, default=False)
     parser.add_argument("--save_video_dir", type=str, default="new_output/gt_dataset_video/",
                         help="the path to save results from temp posa")
     parser.add_argument("--cam_setting_path", type=str, default="./support_files/ScreenCamera_0.json",
                         help="the path to camera settings in open3d")
-    parser.add_argument("--scene_dir", type=str, default="data/scenes",
+    parser.add_argument("--scene_dir", type=str, default="data/protext/scenes",
                         help="the path to the scene mesh")
-    parser.add_argument("--tpose_mesh_dir", type=str, default="data/mesh_ds",
+    parser.add_argument("--tpose_mesh_dir", type=str, default="data/protext/mesh_ds",
                         help="the path to the tpose body mesh (primarily for loading faces)")
     parser.add_argument("--seq_name", type=str, default="N0Sofa_00034_01")
     parser.add_argument("--single_frame", type=int, default=-1)

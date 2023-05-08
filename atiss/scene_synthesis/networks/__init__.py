@@ -17,7 +17,7 @@ from .autoregressive_transformer import AutoregressiveTransformer, \
     AutoregressiveTransformerPE, \
     train_on_batch as train_on_batch_simple_autoregressive, \
     validate_on_batch as validate_on_batch_simple_autoregressive
-
+from .mime import MIME
 from .hidden_to_output import AutoregressiveDMLL, get_bbox_output
 from .feature_extractors import get_feature_extractor
 
@@ -86,6 +86,20 @@ def build_network(
         train_on_batch = train_on_batch_simple_autoregressive
         validate_on_batch = validate_on_batch_simple_autoregressive
         network = AutoregressiveTransformerPE(
+            input_dims,
+            hidden2output_layer(config, n_classes),
+            get_feature_extractor(
+                config["feature_extractor"].get("name", "resnet18"),
+                freeze_bn=config["feature_extractor"].get("freeze_bn", True),
+                input_channels=config["feature_extractor"].get("input_channels", 1),
+                feature_size=config["feature_extractor"].get("feature_size", 256),
+            ),
+            config["network"]
+        )
+    elif network_type == "MIME":
+        train_on_batch = train_on_batch_simple_autoregressive
+        validate_on_batch = validate_on_batch_simple_autoregressive
+        network = MIME(
             input_dims,
             hidden2output_layer(config, n_classes),
             get_feature_extractor(

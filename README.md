@@ -1,15 +1,12 @@
-# Scene Synthesis from Human Motion
-![representative_img](https://user-images.githubusercontent.com/25496380/189529534-dcdd01f5-8422-410a-8de5-6a6404f81d37.png)
-
-We borrow the code from the paper: **Scene Synthesis from Human Motion** [[Paper]()]
-[[Project page](https://lijiaman.github.io/projects/summon/)]
+# Language-driven Scene Synthesis using Multi-conditional Diffusion Model
+This is the official implementation of the NeurIPS 2023 paper: Language-driven Scene Synthesis using Multi-conditional Diffusion Model.
 
 ## Installation
 ### Environment
 We highly recommand you to create a Conda environment to better manage all the Python packages needed.
 ```
-conda create -n summon python=3.8
-conda activate summon
+conda create -n lsdm python=3.8
+conda activate lsdm
 ```
 After you create the environment, please install pytorch with CUDA. You can do it by running
 ```
@@ -19,23 +16,35 @@ The other dependencies needed for this work is listed in the requirements.txt.
 We recommend you to use pip to install them: 
 ```
 pip install -r requirements.txt
+pip install git+https://github.com/openai/CLIP.git
+pip install transformers
+conda install pytorch3d -c pytorch3d
 ```
 
 ### Datasets and Model Checkpoints
-We provide our preprocessed [PROXD](https://ps.is.mpg.de/uploads_file/attachment/attachment/530/ICCV_2019___PROX.pdf)
-dataset and several testing motion sequences from the [AMASS](https://files.is.tue.mpg.de/black/papers/amass.pdf) 
-dataset. Please use this [link](https://drive.google.com/file/d/1RcYoQMSqYUpVLEP45TqZO1ASPJkswsJr/view?usp=share_link)
-to download. After downloading, please unzip it in the project root directory.
+Our extension PRO-teXt and model checkpoints will be updated soon.
 
-We provide a pretrained [model checkpoint](https://drive.google.com/file/d/1JZsRFCjUUEgHre8qtpu8v2bF0FwIb6hK/view?usp=sharing)
-for ContactFormer. Please download and unzip it in the project root directory.
-After doing that, you will get a `training/` folder with two subfolders: 
-`contactformer/` and `posa/`.
+## Training and Testing
+To train a baseline, use the following command:
+```
+python -m run.train_<baseline> --train_data_dir data/protext/proxd_train --valid_data_dir data/protext/proxd_valid --fix_ori --epochs 1000 --out_dir training --experiment <baseline>
+```
+For example, if you want to train LSDM, use the following command:
 
-We also provide a small subset of 3D_Future for you to test. Please use this [link](https://drive.google.com/file/d/1SryC2uRMoOYQ-qOEiZYB0NVccDRNEsB6/view?usp=share_link)
-to download and unzip it at the root directory.
-
-## Contact Prediction
+```
+python -m run.train_sdm --train_data_dir data/protext/proxd_train --valid_data_dir data/protext/proxd_valid --fix_ori --epochs 1000 --out_dir training --experiment sdm
+```
+To test a baseline, use the following command:
+```
+python -m run.test_<baseline> data/protext/proxd_test/ --load_model training/<baseline>/model_ckpt/best_model_cfd.pt --model_name <baseline> --fix_ori --test_on_valid_set --output_dir training/<baseline>/output
+```
+For example, you can use:
+```
+python -m run.test_sdm data/protext/proxd_test/ --load_model training/sdm/model_ckpt/best_model_cfd.pt --model_name sdm --fix_ori --test_on_valid_set --output_dir training/sdm/output
+```
+to test an LSDM checkpoint. Note that, you can also train on HUMANISE dataset. Just replace the path of `data/protext/proxd_train` by `data/humanise/train`.
+ 
+## Scene Synthesis
 To generate contact label predictions for all motion sequences stored in the 
 `.npy` format in a folder (e.g. `amass/` in our provided data folder),
 you can run
@@ -90,33 +99,22 @@ There are other parameters you can set to change the training scheme or the mode
 
 
 ## Scene Synthesis
-To fit best object based on **the most probossible** contact prediction, you can run the following,
-**under the root directory of this repository**:
-```
-python fit_best_obj.py --sequence_name <sequence_name> --vertices_path <path_to_human_vertices> --contact_labels_path <path_to_contact_predictions> --output_dir <output_directory>
-```
-The fitting results for **all candidate objects** will be saved under 
-`<output_directory>/<sequence_name>/fit_best_obj`. 
-For each predicted object category, there is a json file called `best_obj_id.json` 
-which stores the object ID that achieves the lowest optimization loss.
+To generate a video sequence as in our paper, you can proceed by using the following steps:
 
-For example, suppose you have human vertices for motion sequence MPH11_00150_01 saved at
-`data/proxd_valid/vertices/MPH11_00150_01_verts.npy` and contact predictions saved at
-`predictions/proxd_valid/MPH11_00150_01.npy`, you can run
+1. Step 1: Generate objects from contact points
 ```
-python fit_best_obj.py --sequence_name MPH11_00150_01 --vertices_path data/proxd_valid/vertices/MPH11_00150_01_verts.npy --contact_labels_path predictions/proxd_valid/MPH11_00150_01.npy --output_dir fitting_results
+python fit_custom_obj.py --sequence_name <sequence_name> --vertices_path data/supp/proxd_valid/vertices/<sequence_name>_verts.npy --contact_labels_path data/supp/proxd_valid/semantics/<sequence_name>_cfs.npy --output_dir fitting_results/<baseline> --label 3 --file_name training/sdm/output/predictions/<interaction_name>.npy
 ```
-Fitting results will be saved under `fitting_results/MPH11_00150_01/fit_best_obj`.
+where `sequence_name` is the name of the *human motion* and `interaction_name` is the name of the *human_pose*. Note that, we name human pose very closely to its corresponding human motion. For example, you can use the following command:
 
-There are several things noteworthy here:
-- If it is the first time you run this optimization for some human motion sequence,
-the script can take several minutes since it needs to estimate the SDF for human meshes in
-all frames. The estimation will be saved to accelerate future inference.
-- If you want to run this script on a server/cluster without a screen, please add
-`os.environ['PYOPENGL_PLATFORM'] = 'egl'` in `fit_best_obj.py` after the line `import os`.
-- If you want to use contact probability for each object category as input (i.e.
-if you used `--save_probability` flag when generating the contact prediction), 
-you can need to `--input_probability` flag at the end.
+2. Step 2: Visualization
+```
+python vis_fitting_results.py --fitting_results_path fitting_results/<baseline>/<sequence_name>/ --vertices_path data/supp/proxd_valid/vertices/<sequence_name>_verts.npy
+```
+For example,
+```
+python vis_fitting_results.py --fitting_results_path fitting_results/sdm/N0Sofa_00034_02/ --vertices_path data/supp/proxd_valid/vertices/N0Sofa_00034_02_verts.npy
+```
 
 ### Visualization
 If you want to visualize the fitting result (i.e. recovered objects along with the human motion),
@@ -125,57 +123,13 @@ using the same example as mentioned above, you can run
 python vis_fitting_results.py --fitting_results_path fitting_results/MPH11_00150_01 --vertices_path data/proxd_valid/vertices/MPH11_00150_01_verts.npy
 ```
 The script will save rendered frames in `fitting_results/MPH11_00150_01/rendering`. 
-**Note that you need a screen to run this command.** In case you are testing the project on a server
-which doesn't have a display service, you can still load the saved objects and human meshes and
-use other approaches to visualize them. To get the human meshes, you can still run the above
-command and wait until the program automatically exits. The script will save the human meshes
-of your specified motion sequence in `fitting_results/<sequence name>/human/mesh`.
+**Note that you need a screen to run this command.** In case you are testing the project on a server which doesn't have a display service, you can still load the saved objects and human meshes and use other approaches to visualize them. To get the human meshes, you can still run the above command and wait until the program automatically exits. The script will save the human meshes of your specified motion sequence in `fitting_results/<sequence name>/human/mesh`.
+
 Best fitting objects are stored in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/<best_obj_id>/opt_best.obj`.
 As mentioned before, you can get `<best_obj_id>` in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/best_obj_id.json`.
 
-Note that the candidate objects for fitting will be from the `3D_Future` directory in this repository, which is a subset of the [3D Future dataset](https://tianchi.aliyun.com/specials/promotion/alibaba-3d-future). You can modify the candidate objects by changing the contents of the `3D_Future` directory.
-
-### Scene Completion
-Our work allow you to further populate the scene with non-contact objects. To achieve this, we adopted
-a in-door scene generation model called [ATISS](https://nv-tlabs.github.io/ATISS/). To use it, please
-first install additional dependencies required for ATISS:
-```
-pip install -r atiss/requirements.txt
-conda install torchvision -c pytorch
-```
-Then, please download our pretrained ATISS model checkpoint [here](https://drive.google.com/file/d/1u5joiXN9M5ZtNc9mqdDvJr2BeWPdtanz/view?usp=share_link).
-Then, you can do scene completion by running
-```
-python scene_completion.py --fitting_results_path <fitting_results_path> --path_to_model <path_to_atiss_ckpt> --obj_dataset_path 3D_Future/models --spare_length 1 --num_iter 2
-```
-Here `fitting_results_path` should be the object fitting results you just ran for some sequence.
-In the above example, this path should be `fitting_results/MPH11_00150_01`. `path_to_model` should be
-the path to the ATISS model checkpoint. `spare_length` is the extra size you want to add to the scene/room.
-Setting it to 0 will make the scene/room exactly bound existed objects. `num_iter` is the number
-of non-contact objects you want to add to the scene.
-
-After completing the scene, you can visualize the results using exactly the same visualization script
-provided in the previous section.
-
-
 ## Citation
-If you find this work helpful, please consider citing:
+Part of our codebase is based on [Ye et al.](https://github.com/onestarYX/summon). If you find this work helpful, please consider citing:
 ```
-@inproceedings{10.1145/3550469.3555426,
-        author = {Ye, Sifan and Wang, Yixing and Li, Jiaman and Park, Dennis and Liu, C. Karen and Xu, Huazhe and Wu, Jiajun},
-        title = {Scene Synthesis from Human Motion},
-        year = {2022},
-        isbn = {9781450394703},
-        publisher = {Association for Computing Machinery},
-        address = {New York, NY, USA},
-        url = {https://doi.org/10.1145/3550469.3555426},
-        doi = {10.1145/3550469.3555426},
-        booktitle = {SIGGRAPH Asia 2022 Conference Papers},
-        articleno = {26},
-        numpages = {9},
-        keywords = {Scene synthesis, activity understanding, motion analysis},
-        location = {Daegu, Republic of Korea},
-        series = {SA '22}
-        }
-}
+TBD
 ```

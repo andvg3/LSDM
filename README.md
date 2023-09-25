@@ -1,6 +1,8 @@
 # Language-driven Scene Synthesis using Multi-conditional Diffusion Model
 This is the official implementation of the NeurIPS 2023 paper: Language-driven Scene Synthesis using Multi-conditional Diffusion Model.
 
+[Overview.](https://owncloud.tuwien.ac.at/index.php/s/Ul9vM69MWdLKNyJ/download)
+
 ## Table of contents
    1. [Installation](#installation)
    1. [Training and Testing](#training-and-testing)
@@ -58,11 +60,11 @@ cd contactFormer
 python predict_contact.py ../data/amass --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir PATH_OF_OUTPUT
 ```
 Please replace the `PATH_OF_OUTPUT` to any path you want. If you want to
-generate predictions for the PROXD dataset, you can try
+generate predictions for the PRO-teXt dataset, you can try
 ```
 python predict_contact.py ../data/proxd_valid/vertices_can --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir PATH_OF_OUTPUT
 ```
-The above example command generate predictions for the validation split of PROXD.
+The above example command generate predictions for the validation split of PRO-teXt.
 If you want save the probability for each contact object category in order
 to generate more diverse scenes, you can add a `--save_probability` flag
 in addition to the above command.
@@ -84,7 +86,7 @@ To test a model checkpoint, you can run
 ```
 python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --test_on_valid_set --output_dir PATH_OF_OUTPUT
 ```
-The above command tests ContactFormer on the validation split of PROXD dataset.
+The above command tests ContactFormer on the validation split of PRO-teXt dataset.
 The first argument is location of the validation set folder. 
 `--model_name` is an arbitrary name you can set for disguishing the model you are testing. 
 It can also help you pinpoint the location of the test result

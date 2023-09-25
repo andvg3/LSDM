@@ -50,60 +50,6 @@ For example, you can use:
 python -m run.test_sdm data/protext/proxd_test/ --load_model training/sdm/model_ckpt/best_model_cfd.pt --model_name sdm --fix_ori --test_on_valid_set --output_dir training/sdm/output
 ```
 to test an LSDM checkpoint. Note that, you can also train on HUMANISE dataset. Just replace the path of `data/protext/proxd_train` by `data/humanise/train`.
- 
-## Scene Synthesis
-To generate contact label predictions for all motion sequences stored in the 
-`.npy` format in a folder (e.g. `amass/` in our provided data folder),
-you can run
-```
-cd contactFormer
-python predict_contact.py ../data/amass --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir PATH_OF_OUTPUT
-```
-Please replace the `PATH_OF_OUTPUT` to any path you want. If you want to
-generate predictions for the PRO-teXt dataset, you can try
-```
-python predict_contact.py ../data/proxd_valid/vertices_can --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --output_dir PATH_OF_OUTPUT
-```
-The above example command generate predictions for the validation split of PRO-teXt.
-If you want save the probability for each contact object category in order
-to generate more diverse scenes, you can add a `--save_probability` flag
-in addition to the above command.
-
-### Train and test ContactFormer
-You can train and test your own model. To train the model, still under `contactformer/`, you can run
-```
-python train_contactformer.py --train_data_dir ../data/proxd_train --valid_data_dir ../data/proxd_valid --fix_ori --epochs 1000 --out_dir ../training --experiment default_exp
-```
-Replace the train and validation dataset paths after `--train_data_dir` and `--valid_data_dir`
-with the path of your downloaded data. `--fix_ori` normalizes the orientation of
-all motion sequences in the dataset: for each motion sequence, rotate all poses in that sequence
-so that the first pose faces towards some canonical orientation (e.g. pointing out of the screen)
-and the motion sequence continues with the rotated first pose. `--experiment` specifies the name
-of the current experiment. Running the above command, all model checkpoints and 
-training logs will be saved at `<path_to_project_root>/training/default_exp`.
-
-To test a model checkpoint, you can run
-```
-python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --test_on_valid_set --output_dir PATH_OF_OUTPUT
-```
-The above command tests ContactFormer on the validation split of PRO-teXt dataset.
-The first argument is location of the validation set folder. 
-`--model_name` is an arbitrary name you can set for disguishing the model you are testing. 
-It can also help you pinpoint the location of the test result
-since the result will be saved in a text file at the location `PATH_OF_OUTPUT/validation_results_<model_name>.txt`.
-
-You can also run add a `--save_video` flag to save the visualization of contact label prediction
-for some specific motion sequence. For example, you can run
-```
-python test_contactformer.py ../data/proxd_valid/ --load_model ../training/contactformer/model_ckpt/best_model_recon_acc.pt --model_name contactformer --fix_ori --single_seq_name MPH112_00151_01 --save_video --output_dir PATH_OF_OUTPUT
-```
-to save the visualization for predicted contact labels along with rendered body and scene meshes
-for each frame in the MPH112_00151_01 motion sequence. The rendered frames will be saved at
-`PATH_OF_OUTPUT/MPH112_00151_01/`. **Note that you need a screen to run this command.**
-
-There are other parameters you can set to change the training scheme or the model architecture. Check
-`train_contactformer.py` and `test_contactformer.py` for more details.
-
 
 ## Scene Synthesis
 To generate a video sequence as in our paper, you can proceed by using the following steps:

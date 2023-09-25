@@ -1,7 +1,7 @@
 # Language-driven Scene Synthesis using Multi-conditional Diffusion Model
 This is the official implementation of the NeurIPS 2023 paper: Language-driven Scene Synthesis using Multi-conditional Diffusion Model.
 
-[Overview.](https://owncloud.tuwien.ac.at/index.php/s/Ul9vM69MWdLKNyJ/download)
+
 
 ## Table of contents
    1. [Installation](#installation)
@@ -20,16 +20,18 @@ After you create the environment, please install pytorch with CUDA. You can do i
 conda install pytorch pytorch-cuda=11.6 -c pytorch -c nvidia
 ```
 The other dependencies needed for this work is listed in the requirements.txt. 
-We recommend you to use pip to install them: 
+We recommend the following commands to install dependencies: 
 ```
-pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
 pip install transformers
 conda install pytorch3d -c pytorch3d
+pip install -r requirements.txt
 ```
 
 ### Datasets and Model Checkpoints
 Our extension PRO-teXt and model checkpoints will be updated soon.
+
+https://github.com/andvg3/scene-synthesis/assets/140178004/4eee3406-087f-41a1-b729-ce2d461ab4b0
 
 ## Training and Testing
 To train a baseline, use the following command:

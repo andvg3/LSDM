@@ -122,18 +122,10 @@ For example,
 ```
 python vis_fitting_results.py --fitting_results_path fitting_results/sdm/N0Sofa_00034_02/ --vertices_path data/supp/proxd_valid/vertices/N0Sofa_00034_02_verts.npy
 ```
-
-### Visualization
-If you want to visualize the fitting result (i.e. recovered objects along with the human motion),
-using the same example as mentioned above, you can run
-```
-python vis_fitting_results.py --fitting_results_path fitting_results/MPH11_00150_01 --vertices_path data/proxd_valid/vertices/MPH11_00150_01_verts.npy
-```
-The script will save rendered frames in `fitting_results/MPH11_00150_01/rendering`. 
+The script ran above will save rendered frames in `fitting_results/N0Sofa_00034_02/rendering`. 
 **Note that you need a screen to run this command.** In case you are testing the project on a server which doesn't have a display service, you can still load the saved objects and human meshes and use other approaches to visualize them. To get the human meshes, you can still run the above command and wait until the program automatically exits. The script will save the human meshes of your specified motion sequence in `fitting_results/<sequence name>/human/mesh`.
 
-Best fitting objects are stored in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/<best_obj_id>/opt_best.obj`.
-As mentioned before, you can get `<best_obj_id>` in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/best_obj_id.json`.
+Best fitting objects are stored in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/<best_obj_id>/opt_best.obj`. As mentioned before, you can get `<best_obj_id>` in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/best_obj_id.json`.
 
 ## Citation
 Part of our codebase is based on [Ye et al.](https://github.com/onestarYX/summon). If you find this work helpful, please consider citing:

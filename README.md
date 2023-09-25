@@ -1,6 +1,11 @@
 # Language-driven Scene Synthesis using Multi-conditional Diffusion Model
 This is the official implementation of the NeurIPS 2023 paper: Language-driven Scene Synthesis using Multi-conditional Diffusion Model.
 
+## Table of contents
+   1. [Installation](#installation)
+   1. [Training and Testing](#training-and-testing)
+   1. [Scene Synthesis](#scene-synthesis)
+
 ## Installation
 ### Environment
 We highly recommand you to create a Conda environment to better manage all the Python packages needed.

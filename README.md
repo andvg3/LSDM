@@ -29,7 +29,9 @@ pip install -r requirements.txt
 ```
 
 ### Datasets and Model Checkpoints
-Our extension PRO-teXt and model checkpoints will be updated soon.
+PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit their website to obtain the PROXD dataset first. We provide the extension of PRO-teXt as in the [link](https://forms.gle/gYFUrD6wrDJRbLPD7). You also need to obtain HUMANISE via their [project page](https://silvester.wang/HUMANISE/).
+
+All model checkpoints that are used to benchmark in the paper are available at this [link](https://drive.google.com/file/d/1pWYWQSnnhfXuQisxq4wavu7fnmZyOxz0/view?usp=sharing).
 
 ## Training and Testing
 To train a baseline, use the following command:

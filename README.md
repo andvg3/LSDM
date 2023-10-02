@@ -29,7 +29,27 @@ pip install -r requirements.txt
 ```
 
 ### Datasets and Model Checkpoints
-PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit their website to obtain the PROXD dataset first. We provide the extension of PRO-teXt as in the [link](https://forms.gle/gYFUrD6wrDJRbLPD7). You also need to obtain HUMANISE via their [project page](https://silvester.wang/HUMANISE/).
+PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit their website to obtain the PROXD dataset first. We provide the extension of PRO-teXt as in the [link](https://forms.gle/gYFUrD6wrDJRbLPD7). You also need to obtain HUMANISE via their [project page](https://silvester.wang/HUMANISE/). The dataset hierarchy should follow this template:
+```
+|- data/
+    |- amass
+    |- humanise
+         |- objs
+         |- train
+         |- valid
+    |- protext
+         |- mesh_ds
+         |- objs
+         |- proxd_test
+         |- proxd_train
+         |- proxd_valid
+         |- scenes
+    |- supp
+         |- humanise_align
+         |- humanise_vertices
+         |- proxd_train
+         |- proxd_valid
+```
 
 All model checkpoints that are used to benchmark in the paper are available at this [link](https://drive.google.com/file/d/1pWYWQSnnhfXuQisxq4wavu7fnmZyOxz0/view?usp=sharing).
 

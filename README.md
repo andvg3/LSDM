@@ -45,7 +45,7 @@ PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit t
          |- proxd_valid
 ```
 
-All model checkpoints that are used to benchmark in the paper are available at this [link](https://drive.google.com/file/d/1pWYWQSnnhfXuQisxq4wavu7fnmZyOxz0/view?usp=sharing).
+All model checkpoints that are used to benchmark in the paper are available at this [link](https://drive.google.com/file/d/1T1CqAG2UxdtugqxrPj1trRe_UajX1OJl/view?usp=sharing).
 
 ## Training and Testing
 To train a baseline, use the following command:

@@ -47,6 +47,8 @@ PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit t
 
 All model checkpoints that are used to benchmark in the paper are available at this [link](https://drive.google.com/file/d/1T1CqAG2UxdtugqxrPj1trRe_UajX1OJl/view?usp=sharing).
 
+For visualization parts, we utilize a subset of [3D-Future](https://tianchi.aliyun.com/specials/promotion/alibaba-3d-future) dataset. The subset can be downloaded at the [link](https://drive.google.com/file/d/1SryC2uRMoOYQ-qOEiZYB0NVccDRNEsB6/view), credited to [the authors](https://arxiv.org/abs/2301.01424).
+
 ## Training and Testing
 To train a baseline, use the following command:
 ```

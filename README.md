@@ -29,7 +29,7 @@ pip install -r requirements.txt
 ```
 
 ### Datasets and Model Checkpoints
-PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit their website to obtain the PROXD dataset first. We provide the extension of PRO-teXt as in the [link](https://forms.gle/gYFUrD6wrDJRbLPD7). You also need to obtain HUMANISE via their [project page](https://silvester.wang/HUMANISE/). The dataset hierarchy should follow this template:
+PRO-teXt is an extension of [PROXD](https://prox.is.tue.mpg.de/). Please visit their website to obtain the PROXD dataset first. We provide the extension of PRO-teXt as in the [link](https://forms.gle/AutfNYQEF6K9DRYs7). You also need to obtain HUMANISE via their [project page](https://silvester.wang/HUMANISE/). The dataset hierarchy should follow this template:
 ```
 |- data/
     |- protext

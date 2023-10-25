@@ -103,7 +103,7 @@ python fit_custom_obj.py \
       --label <num_label> \
       --file_name training/sdm/output/predictions/<interaction_name>.npy
 ```
-where `sequence_name` is the name of the *human motion* and `interaction_name` is the name of the *human_pose*. Note that, we name human pose very closely to its corresponding human motion. For example, you can use the following command:
+where `sequence_name` is the name of the *human motion* and `interaction_name` is the name of the *human_pose*. Note that, we name human pose very closely to its corresponding human motion. In addition, `num_label` can be found in the fild `mpcat40.tsv`. For example, you can use the following command:
 
 2. Step 2: Visualization
 ```bash

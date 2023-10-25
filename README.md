@@ -51,20 +51,20 @@ For visualization parts, we utilize a subset of [3D-Future](https://tianchi.aliy
 
 ## Training and Testing
 To train a baseline, use the following command:
-```
+```bash
 python -m run.train_<baseline> --train_data_dir data/protext/proxd_train --valid_data_dir data/protext/proxd_valid --fix_ori --epochs 1000 --out_dir training --experiment <baseline>
 ```
 For example, if you want to train LSDM, use the following command:
 
-```
+```bash
 python -m run.train_sdm --train_data_dir data/protext/proxd_train --valid_data_dir data/protext/proxd_valid --fix_ori --epochs 1000 --out_dir training --experiment sdm
 ```
 To test a baseline, use the following command:
-```
+```bash
 python -m run.test_<baseline> data/protext/proxd_test/ --load_model training/<baseline>/model_ckpt/best_model_cfd.pt --model_name <baseline> --fix_ori --test_on_valid_set --output_dir training/<baseline>/output
 ```
 For example, you can use:
-```
+```bash
 python -m run.test_sdm data/protext/proxd_test/ --load_model training/sdm/model_ckpt/best_model_cfd.pt --model_name sdm --fix_ori --test_on_valid_set --output_dir training/sdm/output
 ```
 to test an LSDM checkpoint. Note that, you can also train on HUMANISE dataset. Just replace the path of `data/protext/proxd_train` by `data/humanise/train`.
@@ -73,17 +73,17 @@ to test an LSDM checkpoint. Note that, you can also train on HUMANISE dataset. J
 To generate a video sequence as in our paper, you can proceed by using the following steps:
 
 1. Step 1: Generate objects from contact points
-```
+```bash
 python fit_custom_obj.py --sequence_name <sequence_name> --vertices_path data/supp/proxd_valid/vertices/<sequence_name>_verts.npy --contact_labels_path data/supp/proxd_valid/semantics/<sequence_name>_cfs.npy --output_dir fitting_results/<baseline> --label 3 --file_name training/sdm/output/predictions/<interaction_name>.npy
 ```
 where `sequence_name` is the name of the *human motion* and `interaction_name` is the name of the *human_pose*. Note that, we name human pose very closely to its corresponding human motion. For example, you can use the following command:
 
 2. Step 2: Visualization
-```
+```bash
 python vis_fitting_results.py --fitting_results_path fitting_results/<baseline>/<sequence_name>/ --vertices_path data/supp/proxd_valid/vertices/<sequence_name>_verts.npy
 ```
 For example,
-```
+```bash
 python vis_fitting_results.py --fitting_results_path fitting_results/sdm/N0Sofa_00034_02/ --vertices_path data/supp/proxd_valid/vertices/N0Sofa_00034_02_verts.npy
 ```
 The script ran above will save rendered frames in `fitting_results/N0Sofa_00034_02/rendering`. 

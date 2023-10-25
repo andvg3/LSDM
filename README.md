@@ -91,8 +91,13 @@ The script ran above will save rendered frames in `fitting_results/N0Sofa_00034_
 
 Best fitting objects are stored in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/<best_obj_id>/opt_best.obj`. As mentioned before, you can get `<best_obj_id>` in `fitting_results/<sequence name>/fit_best_obj/<object category>/<object index>/best_obj_id.json`.
 
-## Citation
+## Acknowledgements
 Part of our codebase is based on [Ye et al.](https://github.com/onestarYX/summon). If you find this work helpful, please consider citing:
 ```
-TBD
+@article{vuong2023language,
+  title={Language-driven Scene Synthesis using Multi-conditional Diffusion Model},
+  author={Vuong, An Dinh and Vu, Minh Nhat and Nguyen, Toan and Huang, Baoru and Nguyen, Dzung and Vo, Thieu and Nguyen, Anh},
+  journal={arXiv preprint arXiv:2310.15948},
+  year={2023}
+}
 ```

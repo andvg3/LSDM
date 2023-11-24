@@ -1,9 +1,0 @@
-numpy
-cython
-pillow
-pyyaml
-pytorch-fast-transformers
-pyrr
-trimesh
-tqdm
-simple-3dviz

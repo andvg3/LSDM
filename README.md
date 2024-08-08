@@ -26,7 +26,7 @@ We recommend the following commands to install dependencies:
 ```bash
 pip install git+https://github.com/openai/CLIP.git
 pip install transformers
-conda install pytorch3d -c pytorch3d
+conda install -c pytorch3d -c conda-forge pytorch3d=0.7.3 
 pip install -r requirements.txt
 ```
 

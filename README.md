@@ -1,5 +1,5 @@
 # Language-driven Scene Synthesis using Multi-conditional Diffusion Model
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/language-driven-scene-synthesis-using-multi/indoor-scene-synthesis-on-pro-text)](https://paperswithcode.com/sota/indoor-scene-synthesis-on-pro-text?p=language-driven-scene-synthesis-using-multi)
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/language-driven-scene-synthesis-using-multi-1/indoor-scene-synthesis-on-pro-text)](https://paperswithcode.com/sota/indoor-scene-synthesis-on-pro-text?p=language-driven-scene-synthesis-using-multi-1)
 
 This is the official implementation of the NeurIPS 2023 paper: Language-driven Scene Synthesis using Multi-conditional Diffusion Model.
 
